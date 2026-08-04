@@ -255,12 +255,36 @@
   .prems-swap-item .row{ display:flex; gap:6px; margin-top:6px; }
 
   @media print{
+    /* Toujours imprimer le tableau semaine complet, jamais la vue mobile
+       "1 jour", même si l'aperçu d'impression est étroit. */
+    #prems-root{
+      --bg:#ffffff; --panel:#ffffff; --panel-2:#f2f4f6; --border:#c7ced5;
+      --text:#111318; --muted:#4c5864; --accent:#b23428; --accent-dim:#b234281a;
+      --live:#8a5a08; --live-dim:#8a5a0815; --ok:#3c6b23; --ok-dim:#3c6b2315;
+    }
     body *{ visibility:hidden; }
     #prems-root, #prems-root *{ visibility:visible; }
-    #prems-root{ position:absolute; top:0; left:0; width:100%; border:none; }
-    .prems-toolbar, .prems-add-form, .prems-admin-bar, .prems-live,
+    #prems-root{ position:absolute; top:0; left:0; width:100%; border:none; background:#fff; }
+    .prems-toolbar, .prems-add-form, .prems-admin-bar, .prems-live, .prems-conn-banner,
     #prems-modal-layer, .prems-status, .prems-export-group, button{ display:none !important; }
+    .prems-grid-wrap{ display:block !important; overflow:visible !important; max-height:none !important; border:none; }
+    .prems-mobile-agenda{ display:none !important; }
+    table.prems-grid thead th, table.prems-grid td.time-col{ position:static !important; }
+    table.prems-grid td.slot.peak-empty{ animation:none !important; }
   }
+
+  /* --- Export image : version épurée capturée par html2canvas (sans les
+     boutons/formulaires), toujours avec le tableau semaine complet même
+     si l'export est déclenché depuis un téléphone. --- */
+  .prems-exporting .prems-toolbar, .prems-exporting .prems-add-form,
+  .prems-exporting .prems-admin-bar, .prems-exporting .prems-live,
+  .prems-exporting .prems-conn-banner, .prems-exporting .prems-status,
+  .prems-exporting #prems-modal-layer, .prems-exporting .prems-admin-note{ display:none !important; }
+  .prems-exporting .prems-grid-wrap{ display:block !important; overflow:visible !important; max-height:none !important; }
+  .prems-exporting .prems-mobile-agenda{ display:none !important; }
+  .prems-exporting table.prems-grid thead th, .prems-exporting table.prems-grid td.time-col{ position:static !important; }
+  .prems-exporting table.prems-grid td.slot.peak-empty{ animation:none !important; }
+  .prems-exporting.theme-light{ box-shadow:none; }
 
   .prems-modal-backdrop{
     position:absolute; inset:0; background:#05080ccc; z-index:10;
@@ -1390,7 +1414,16 @@
     setStatus("Génération de l'image…");
     try{
       await loadHtml2Canvas();
-      const canvas = await window.html2canvas(root, { backgroundColor:'#10151b', scale:2 });
+      root.classList.add('prems-exporting');
+      // Laisse le navigateur recalculer l'affichage (tableau complet, boutons masqués)
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+      const bg = getComputedStyle(root).backgroundColor || getComputedStyle(root).getPropertyValue('--bg');
+      const canvas = await window.html2canvas(root, {
+        backgroundColor: bg,
+        scale: 2,
+        windowWidth: 1024, // force la mise en page "desktop" (tableau semaine complet), même si exporté depuis un téléphone
+        useCORS: true
+      });
       const link = document.createElement('a');
       link.download = `planning-recrutement-${weekKey}.png`;
       link.href = canvas.toDataURL('image/png');
@@ -1399,6 +1432,8 @@
     }catch(e){
       console.error(e);
       setStatus("Échec de l'export image (vérifie ta connexion).", "err");
+    }finally{
+      root.classList.remove('prems-exporting');
     }
   });
 
