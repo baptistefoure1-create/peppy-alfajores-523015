@@ -17,6 +17,7 @@
     --live-dim:#f2a54122;
     --ok:#8bc46a;
     --ok-dim:#8bc46a22;
+    transition:background .15s, color .15s;
     font-family:'Inter',sans-serif;
     background:var(--bg);
     color:var(--text);
@@ -30,6 +31,32 @@
   }
   #prems-root *{ box-sizing:border-box; }
   #prems-root .mono{ font-family:'JetBrains Mono',monospace; }
+
+  /* Thème clair (optionnel, sombre reste le défaut) */
+  #prems-root.theme-light{
+    --bg:#f4f6f8;
+    --panel:#ffffff;
+    --panel-2:#eef1f5;
+    --border:#d7dde3;
+    --text:#1c242c;
+    --muted:#5c6b78;
+    --accent:#d1453b;
+    --accent-dim:#d1453b1f;
+    --live:#c17d10;
+    --live-dim:#c17d1020;
+    --ok:#4a8a2a;
+    --ok-dim:#4a8a2a1f;
+  }
+  #prems-root.theme-light .prems-modal-backdrop{ background:#1c242c99; }
+  #prems-root.theme-light table.prems-grid td.slot:hover{ background:#00000008; }
+  #prems-root.theme-light .prems-empty-cell{ color:#aeb8c2; }
+
+  .prems-theme-toggle{
+    background:var(--panel-2); border:1px solid var(--border); color:var(--muted);
+    border-radius:7px; padding:8px 12px; font-size:13px; cursor:pointer;
+    font-family:'Inter',sans-serif; transition:filter .15s;
+  }
+  .prems-theme-toggle:hover{ color:var(--text); border-color:var(--muted); }
 
   .prems-head{
     padding:22px 28px 18px;
@@ -124,6 +151,12 @@
   }
   table.prems-grid td.slot:hover{ background:#ffffff0a; }
   table.prems-grid td.slot.now-col{ background:var(--live-dim); }
+  table.prems-grid td.slot.peak-empty{ background:var(--accent-dim); animation:peakGlow 2.4s infinite; }
+  table.prems-grid td.slot.peak-empty:hover{ background:#e2574c30; }
+  table.prems-grid td.slot.peak-empty .prems-empty-cell{ color:var(--accent); font-weight:700; }
+  @keyframes peakGlow{ 0%,100%{ background:var(--accent-dim); } 50%{ background:#e2574c1a; } }
+  table.prems-grid thead th.peak-col{ color:var(--accent); }
+  table.prems-grid td.time-col.peak-col{ color:var(--accent); }
   .slot-stack{ display:flex; flex-direction:column; gap:2px; }
   .slot-chip{
     display:inline-flex; align-items:center; gap:5px;
@@ -162,6 +195,27 @@
   .prems-status.err{ color:var(--accent); }
   .prems-status.ok{ color:var(--ok); }
 
+  .prems-recap-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  .prems-recap-table th, .prems-recap-table td{ border:1px solid var(--border); padding:6px 8px; text-align:left; }
+  .prems-recap-table th{ color:var(--muted); font-weight:600; font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase; }
+  .prems-recap-table tr.zero td{ color:var(--accent); }
+  .prems-recap-bar-wrap{ background:var(--panel-2); border-radius:4px; overflow:hidden; height:8px; width:100%; }
+  .prems-recap-bar{ background:var(--accent); height:100%; }
+
+  .prems-swap-item{
+    border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin-bottom:8px;
+    font-size:12.5px; background:var(--panel-2);
+  }
+  .prems-swap-item .row{ display:flex; gap:6px; margin-top:6px; }
+
+  @media print{
+    body *{ visibility:hidden; }
+    #prems-root, #prems-root *{ visibility:visible; }
+    #prems-root{ position:absolute; top:0; left:0; width:100%; border:none; }
+    .prems-toolbar, .prems-add-form, .prems-admin-bar, .prems-live,
+    #prems-modal-layer, .prems-status, .prems-export-group, button{ display:none !important; }
+  }
+
   .prems-modal-backdrop{
     position:absolute; inset:0; background:#05080ccc; z-index:10;
     display:flex; align-items:center; justify-content:center; padding:20px;
@@ -190,9 +244,12 @@
       <h1>Planning des disponibilités</h1>
       <p class="week-range" id="prems-week-range">Chargement de la semaine…</p>
     </div>
-    <div class="prems-live" id="prems-live-indicator">
-      <span class="dot"></span>
-      <span id="prems-live-text">—</span>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button class="prems-theme-toggle" id="prems-theme-toggle" title="Changer de thème">☀️ Thème clair</button>
+      <div class="prems-live" id="prems-live-indicator">
+        <span class="dot"></span>
+        <span id="prems-live-text">—</span>
+      </div>
     </div>
   </div>
 
@@ -218,8 +275,15 @@
           <input type="checkbox" id="prems-absent-toggle">
           Absent(e) cette semaine
         </label>
+        <button class="prems-btn ghost small" id="prems-fav-save" title="Sauvegarder mes créneaux actuels comme favoris">⭐ Sauver mes favoris</button>
+        <button class="prems-btn ghost small" id="prems-fav-apply" title="Appliquer mes créneaux favoris à cette semaine">⚡ Appliquer mes favoris</button>
+        <button class="prems-btn ghost small" id="prems-swap-btn" title="Voir/proposer des échanges de créneaux">🔄 Mes échanges</button>
       </div>
-      <div style="display:flex; gap:8px;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <div class="prems-export-group" style="display:flex; gap:8px;">
+          <button class="prems-btn ghost small" id="prems-export-image" title="Exporter le planning en image">📷 Image</button>
+          <button class="prems-btn ghost small" id="prems-export-pdf" title="Exporter le planning en PDF (impression)">🖨️ PDF</button>
+        </div>
         <button class="prems-btn ghost" id="prems-admin-toggle">🔒 Mode administrateur</button>
         <button class="prems-btn ghost" id="prems-clear-mine">Effacer mes créneaux (cette semaine)</button>
       </div>
@@ -232,12 +296,13 @@
       <button class="prems-btn ghost small" id="prems-admin-next-week">⏭️ Forcer la semaine suivante</button>
       <button class="prems-btn ghost small" id="prems-admin-auto-week" style="display:none;">↺ Revenir à la semaine automatique</button>
       <button class="prems-btn ghost small" id="prems-admin-missing">📣 Qui n'a rien pris ?</button>
+      <button class="prems-btn ghost small" id="prems-admin-recap">📊 Récap créneaux</button>
       <button class="prems-btn ghost small" id="prems-admin-history">🗂️ Historique des semaines</button>
       <button class="prems-btn ghost small" id="prems-admin-log">🧾 Journal admin</button>
       <span class="prems-admin-stats" id="prems-admin-stats"></span>
     </div>
 
-    <p class="prems-hint" style="margin:-6px 0 14px;">Créneaux de 2h, de 12h à 4h. Clique sur une case pour prendre un créneau, te retirer, ou te mettre suppléant. Max 3 jours différents sur la même tranche horaire par semaine.</p>
+    <p class="prems-hint" style="margin:-6px 0 14px;">Créneaux de 2h, de 12h à 4h. Clique sur une case pour prendre un créneau, te retirer, ou te mettre suppléant. Max 3 jours différents sur la même tranche horaire par semaine. Les créneaux 🔥 (forte affluence) encore vides sont surlignés en rouge.</p>
 
     <div class="prems-grid-wrap">
       <table class="prems-grid" id="prems-table"></table>
@@ -266,6 +331,8 @@
     { idx:7, label:"02h–04h" },
   ];
   const MAX_SAME_SLOT_PER_WEEK = 3;
+  // Créneaux à forte affluence : surlignés en rouge quand ils sont vides (idx des SLOTS ci-dessus)
+  const PEAK_SLOTS = [3,4]; // 18h–20h, 20h–22h
   const GRADE_LABEL = { MF:"Médecin Formateur", RF:"Responsable Formateur", MC:"Médecin-Chef", ADD:"Assistant de Direction" };
   const PALETTE = ["#e2574c","#4ea8de","#8bc46a","#f2a541","#c792ea","#5fd4c0","#f06fa0","#a3b18a","#e8c547","#7aa5d2"];
 
@@ -303,6 +370,24 @@
   }
 
   const root = document.getElementById('prems-root');
+  const themeToggleBtn = document.getElementById('prems-theme-toggle');
+
+  // --- Thème clair / sombre (sombre par défaut, choix mémorisé localement) ---
+  const THEME_KEY = 'prems-theme';
+  function applyTheme(theme){
+    root.classList.toggle('theme-light', theme === 'light');
+    themeToggleBtn.textContent = theme === 'light' ? '🌙 Thème sombre' : '☀️ Thème clair';
+    document.documentElement.style.background = theme === 'light' ? '#f4f6f8' : '#10151b';
+    document.body.style.background = theme === 'light' ? '#f4f6f8' : '#10151b';
+  }
+  let currentTheme = 'dark';
+  try{ currentTheme = localStorage.getItem(THEME_KEY) || 'dark'; }catch(e){}
+  applyTheme(currentTheme);
+  themeToggleBtn.addEventListener('click', ()=>{
+    currentTheme = (currentTheme === 'light') ? 'dark' : 'light';
+    try{ localStorage.setItem(THEME_KEY, currentTheme); }catch(e){}
+    applyTheme(currentTheme);
+  });
   const statusEl = document.getElementById('prems-status');
   const table = document.getElementById('prems-table');
   const weekRangeEl = document.getElementById('prems-week-range');
@@ -443,12 +528,14 @@
 
     let tbody = `<tbody>`;
     SLOTS.forEach(s=>{
+      const isPeak = PEAK_SLOTS.includes(s.idx);
       tbody += `<tr>`;
-      tbody += `<td class="time-col mono">${s.label}</td>`;
+      tbody += `<td class="time-col mono${isPeak ? ' peak-col' : ''}" title="${isPeak ? 'Créneau à forte affluence' : ''}">${s.label}${isPeak ? ' 🔥' : ''}</td>`;
       DAYS.forEach((d,i)=>{
         const key = `${d}-${s.idx}`;
         const list = planning[key] || [];
         const isNow = ctx.inWindow && i===ctx.dayIdx && s.idx===ctx.slotIdx;
+        const isPeakEmpty = isPeak && !list.length;
         let content;
         if(list.length){
           content = `<div class="slot-stack">` + list.map(a=>{
@@ -460,9 +547,9 @@
             return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
           }).join('') + `</div>`;
         } else {
-          content = `<span class="prems-empty-cell">+</span>`;
+          content = `<span class="prems-empty-cell">${isPeakEmpty ? '⚠ vide' : '+'}</span>`;
         }
-        tbody += `<td class="slot ${isNow ? 'now-col' : ''}" data-day="${d}" data-slot="${s.idx}">${content}</td>`;
+        tbody += `<td class="slot ${isNow ? 'now-col' : ''}${isPeakEmpty ? ' peak-empty' : ''}" data-day="${d}" data-slot="${s.idx}" title="${isPeakEmpty ? 'Créneau à forte affluence encore vide' : ''}">${content}</td>`;
       });
       tbody += `</tr>`;
     });
@@ -751,6 +838,7 @@
 
     if(myAssignment){
       actionsHtml += `<button class="prems-btn" data-action="remove-mine">Me retirer de ce créneau</button>`;
+      actionsHtml += `<button class="prems-btn ghost" data-action="propose-swap">🔄 Proposer un échange</button>`;
     } else if(mySuppleantOf){
       actionsHtml += `<button class="prems-btn" data-action="remove-suppleance">Retirer ma suppléance</button>`;
     } else if(absences[me]){
@@ -811,6 +899,7 @@
       btn.addEventListener('click', ()=>{
         const action = btn.dataset.action;
         if(action === 'close'){ closeModal(); return; }
+        if(action === 'propose-swap'){ openSwapProposalModal(day, slotIdx, key, me); return; }
         if(action === 'remove-mine'){
           planning[key] = list.filter(a=>a.titulaire!==me);
           if(!planning[key].length) delete planning[key];
@@ -868,6 +957,286 @@
     updateLiveIndicator();
     savePlanning();
   }
+
+  // ============================================================
+  // Échanges de créneaux entre recruteurs
+  // ============================================================
+  async function loadSwapRequests(){
+    try{ return (await fbGet('swap-requests')) || []; }catch(e){ console.error(e); return []; }
+  }
+  async function saveSwapRequests(list){
+    try{ await fbSet('swap-requests', list); }catch(e){ console.error(e); setStatus("Échec de l'enregistrement de la demande d'échange.", "err"); }
+  }
+
+  function openSwapProposalModal(fromDay, fromSlotIdx, fromKey, me){
+    const fromLabel = `${fromDay} ${SLOTS.find(s=>s.idx===fromSlotIdx).label}`;
+    const options = [];
+    DAYS.forEach(d=>{
+      SLOTS.forEach(s=>{
+        const k = `${d}-${s.idx}`;
+        if(k === fromKey) return;
+        (planning[k] || []).forEach(a=>{
+          if(a.titulaire !== me){
+            options.push({ name:a.titulaire, key:k, label:`${d} ${s.label} — ${a.titulaire}` });
+          }
+        });
+      });
+    });
+
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal">
+          <h3>Proposer un échange</h3>
+          <p class="sub">Ton créneau : ${fromLabel}. Choisis le créneau (et la personne) que tu veux avoir à la place.</p>
+          ${options.length ? `
+            <div class="actions">
+              <select class="prems-select" id="prems-swap-target" style="width:100%;">
+                ${options.map((o,i)=>`<option value="${i}">${o.label}</option>`).join('')}
+              </select>
+              <button class="prems-btn" data-action="send-swap">Envoyer la demande</button>
+              <button class="prems-btn ghost" data-action="close">Annuler</button>
+            </div>` : `<p class="prems-hint">Aucun autre créneau occupé disponible pour un échange cette semaine.</p><div class="actions"><button class="prems-btn ghost" data-action="close">Fermer</button></div>`}
+        </div>
+      </div>`;
+
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+    const sendBtn = modalLayer.querySelector('[data-action="send-swap"]');
+    if(sendBtn){
+      sendBtn.addEventListener('click', async ()=>{
+        const sel = document.getElementById('prems-swap-target');
+        const chosen = options[Number(sel.value)];
+        if(!chosen) return;
+        sendBtn.disabled = true; sendBtn.textContent = "Envoi…";
+        const req = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+          fromName: me, fromKey, fromLabel,
+          toName: chosen.name, toKey: chosen.key, toLabel: chosen.label,
+          status: 'pending', createdAt: new Date().toISOString()
+        };
+        const list = await loadSwapRequests();
+        list.push(req);
+        await saveSwapRequests(list);
+        closeModal();
+        setStatus(`Demande d'échange envoyée à ${chosen.name}.`, "ok");
+      });
+    }
+  }
+
+  async function respondSwap(req, accept){
+    let list = await loadSwapRequests();
+    list = list.filter(r=>r.id!==req.id);
+    if(accept){
+      const fromList = planning[req.fromKey] || [];
+      const toList = planning[req.toKey] || [];
+      const fromEntry = fromList.find(a=>a.titulaire===req.fromName);
+      const toEntry = toList.find(a=>a.titulaire===req.toName);
+      if(fromEntry && toEntry){
+        fromEntry.titulaire = req.toName;
+        toEntry.titulaire = req.fromName;
+        renderAll();
+        await savePlanning();
+        setStatus("Échange effectué.", "ok");
+      } else {
+        setStatus("Ce créneau a changé entre-temps, échange impossible.", "err");
+      }
+    } else {
+      setStatus("Demande d'échange refusée.", "ok");
+    }
+    await saveSwapRequests(list);
+  }
+
+  async function openSwapListModal(){
+    const me = recruiterSelect.value;
+    if(!me){ setStatus("Sélectionne d'abord ton nom.", "err"); return; }
+    const all = await loadSwapRequests();
+    const received = all.filter(r=>r.toName===me && r.status==='pending');
+    const sent = all.filter(r=>r.fromName===me && r.status==='pending');
+
+    const receivedHtml = received.length
+      ? received.map(r=>`
+          <div class="prems-swap-item">
+            <strong>${r.fromName}</strong> propose : ton créneau <em>${r.toLabel}</em> contre son créneau <em>${r.fromLabel}</em>.
+            <div class="row">
+              <button class="prems-btn small" data-accept="${r.id}">Accepter</button>
+              <button class="prems-btn ghost small" data-decline="${r.id}">Refuser</button>
+            </div>
+          </div>`).join('')
+      : `<p class="prems-hint">Aucune demande reçue.</p>`;
+
+    const sentHtml = sent.length
+      ? sent.map(r=>`
+          <div class="prems-swap-item">
+            Tu as proposé à <strong>${r.toName}</strong> : ton créneau <em>${r.fromLabel}</em> contre son créneau <em>${r.toLabel}</em>.
+            <div class="row"><button class="prems-btn ghost small" data-cancel="${r.id}">Annuler</button></div>
+          </div>`).join('')
+      : `<p class="prems-hint">Aucune demande envoyée.</p>`;
+
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:440px;">
+          <h3>Mes échanges de créneaux</h3>
+          <p class="sub">Demandes reçues</p>
+          ${receivedHtml}
+          <p class="sub" style="margin-top:10px;">Demandes envoyées</p>
+          ${sentHtml}
+          <div class="actions" style="margin-top:10px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        </div>
+      </div>`;
+
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+    modalLayer.querySelectorAll('[data-accept]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const req = received.find(r=>r.id===btn.dataset.accept);
+        if(req){ await respondSwap(req, true); closeModal(); }
+      });
+    });
+    modalLayer.querySelectorAll('[data-decline]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const req = received.find(r=>r.id===btn.dataset.decline);
+        if(req){ await respondSwap(req, false); closeModal(); }
+      });
+    });
+    modalLayer.querySelectorAll('[data-cancel]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        let list = await loadSwapRequests();
+        list = list.filter(r=>r.id!==btn.dataset.cancel);
+        await saveSwapRequests(list);
+        setStatus("Demande annulée.", "ok");
+        closeModal();
+      });
+    });
+  }
+
+  document.getElementById('prems-swap-btn').addEventListener('click', openSwapListModal);
+
+  // ============================================================
+  // Créneaux favoris
+  // ============================================================
+  document.getElementById('prems-fav-save').addEventListener('click', async ()=>{
+    const me = recruiterSelect.value;
+    if(!me){ setStatus("Sélectionne d'abord ton nom.", "err"); return; }
+    const favs = [];
+    DAYS.forEach(d=> SLOTS.forEach(s=>{
+      const list = planning[`${d}-${s.idx}`] || [];
+      if(list.some(a=>a.titulaire===me)) favs.push({ day:d, slot:s.idx });
+    }));
+    if(!favs.length){ setStatus("Tu n'as aucun créneau cette semaine à sauvegarder comme favori.", "err"); return; }
+    try{
+      await fbSet(`favorites-${me}`, favs);
+      setStatus(`${favs.length} créneau(x) sauvegardé(s) comme favoris.`, "ok");
+    }catch(e){ console.error(e); setStatus("Échec de la sauvegarde des favoris.", "err"); }
+  });
+
+  document.getElementById('prems-fav-apply').addEventListener('click', async ()=>{
+    const me = recruiterSelect.value;
+    if(!me){ setStatus("Sélectionne d'abord ton nom.", "err"); return; }
+    let favs = [];
+    try{ favs = (await fbGet(`favorites-${me}`)) || []; }catch(e){ console.error(e); }
+    if(!favs.length){ setStatus("Tu n'as pas encore de créneaux favoris sauvegardés.", "err"); return; }
+    let applied = 0, skippedTaken = 0, skippedMax = 0;
+    favs.forEach(f=>{
+      const key = `${f.day}-${f.slot}`;
+      const list = planning[key] || [];
+      if(list.some(a=>a.titulaire===me)) return; // déjà pris
+      if(list.length){ skippedTaken++; return; } // créneau déjà pris par quelqu'un d'autre
+      if(countSameSlotDays(me, f.slot, null) >= MAX_SAME_SLOT_PER_WEEK){ skippedMax++; return; }
+      const newList = list.slice();
+      newList.push({ titulaire: me, suppleant: null });
+      planning[key] = newList;
+      applied++;
+    });
+    renderAll();
+    if(applied) await savePlanning();
+    setStatus(`${applied} créneau(x) favori(s) appliqué(s).` + (skippedTaken || skippedMax ? ` (${skippedTaken} déjà pris par quelqu'un, ${skippedMax} au-delà de la limite de 3 jours)` : ''), applied ? "ok" : "err");
+  });
+
+  // ============================================================
+  // Récap hebdomadaire par recruteur
+  // ============================================================
+  function computeWeeklyRecap(){
+    const counts = {};
+    recruiters.forEach(r=> counts[r.name] = { titulaire:0, suppleant:0, grade:r.grade });
+    Object.keys(planning).forEach(k=>{
+      (planning[k] || []).forEach(a=>{
+        if(!counts[a.titulaire]) counts[a.titulaire] = { titulaire:0, suppleant:0, grade:'' };
+        counts[a.titulaire].titulaire++;
+        if(a.suppleant){
+          if(!counts[a.suppleant]) counts[a.suppleant] = { titulaire:0, suppleant:0, grade:'' };
+          counts[a.suppleant].suppleant++;
+        }
+      });
+    });
+    return Object.entries(counts)
+      .map(([name,c])=>({ name, grade:c.grade, titulaire:c.titulaire, suppleant:c.suppleant, total:c.titulaire+c.suppleant }))
+      .sort((a,b)=> b.total - a.total);
+  }
+
+  document.getElementById('prems-admin-recap').addEventListener('click', ()=>{
+    if(!isAdmin) return;
+    const recap = computeWeeklyRecap();
+    const maxTotal = Math.max(1, ...recap.map(r=>r.total));
+    const rows = recap.map(r=>`
+      <tr class="${r.total===0 ? 'zero' : ''}">
+        <td>${r.name}${absences[r.name] ? ' (absent)' : ''}</td>
+        <td>${GRADE_LABEL[r.grade] || r.grade || '—'}</td>
+        <td>${r.titulaire}</td>
+        <td>${r.suppleant}</td>
+        <td><strong>${r.total}</strong></td>
+        <td style="width:90px;"><div class="prems-recap-bar-wrap"><div class="prems-recap-bar" style="width:${(r.total/maxTotal*100).toFixed(0)}%;"></div></div></td>
+      </tr>`).join('');
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:520px;">
+          <h3>Récap de la semaine</h3>
+          <p class="sub">Nombre de créneaux pris par recruteur — semaine du ${fmtDate(monday)} au ${fmtDate(sunday)}.</p>
+          <div style="max-height:340px; overflow:auto;">
+            <table class="prems-recap-table">
+              <thead><tr><th>Nom</th><th>Grade</th><th>Titulaire</th><th>Suppléant</th><th>Total</th><th></th></tr></thead>
+              <tbody>${rows || '<tr><td colspan="6">Aucun recruteur.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div class="actions" style="margin-top:12px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+  });
+
+  // ============================================================
+  // Export image / PDF
+  // ============================================================
+  function loadHtml2Canvas(){
+    return new Promise((resolve,reject)=>{
+      if(window.html2canvas){ resolve(); return; }
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      s.onload = ()=>resolve();
+      s.onerror = ()=>reject(new Error('html2canvas load failed'));
+      document.head.appendChild(s);
+    });
+  }
+
+  document.getElementById('prems-export-image').addEventListener('click', async ()=>{
+    setStatus("Génération de l'image…");
+    try{
+      await loadHtml2Canvas();
+      const canvas = await window.html2canvas(root, { backgroundColor:'#10151b', scale:2 });
+      const link = document.createElement('a');
+      link.download = `planning-recrutement-${weekKey}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      setStatus("Image exportée.", "ok");
+    }catch(e){
+      console.error(e);
+      setStatus("Échec de l'export image (vérifie ta connexion).", "err");
+    }
+  });
+
+  document.getElementById('prems-export-pdf').addEventListener('click', ()=>{
+    window.print();
+  });
 
   function renderAdminStats(){
     const total = DAYS.length * SLOTS.length;
