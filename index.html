@@ -547,6 +547,23 @@
 
 <script>
 (function(){
+  // --- Sécurité viewport mobile ---
+  // Si la page qui héberge ce widget n'a pas de balise <meta name="viewport">
+  // (ou une balise incomplète), les mobiles rendent la page comme si elle
+  // faisait ~980px de large puis la réduisent à l'échelle de l'écran : le
+  // tableau semaine complet s'affiche minuscule et TOUTES les media queries
+  // mobiles (max-width:640px) restent inertes puisque la largeur "vue" par
+  // le CSS ne descend jamais sous 640px. On corrige donc ça nous-mêmes.
+  (function ensureViewportMeta(){
+    let vp = document.querySelector('meta[name="viewport"]');
+    if(!vp){
+      vp = document.createElement('meta');
+      vp.name = 'viewport';
+      document.head.appendChild(vp);
+    }
+    vp.content = 'width=device-width, initial-scale=1, maximum-scale=1';
+  })();
+
   const DAYS = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
   // Tranches de 2h, de 10h à 4h (9 créneaux)
   // Note : idx:8 attribué au nouveau créneau 10h–12h (plutôt que de renuméroter
