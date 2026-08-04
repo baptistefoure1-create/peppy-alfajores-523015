@@ -280,6 +280,26 @@
     .prems-head{ padding:18px 16px; }
     .prems-body{ padding:16px; }
     .prems-head h1{ font-size:20px; }
+
+    /* La modale se recentre sur l'écran visible (et non sur toute la hauteur
+       du widget, qui peut dépasser l'écran une fois la liste de créneaux
+       affichée) — sinon elle peut s'ouvrir hors-champ et forcer à scroller. */
+    .prems-modal-backdrop{ position:fixed; padding:16px; }
+    .prems-modal{ max-height:calc(100vh - 32px); overflow-y:auto; }
+
+    /* Boutons et champs plus grands et empilés : zones tactiles plus faciles
+       à viser avec le pouce qu'une rangée de petits boutons collés. */
+    .prems-toolbar{ flex-direction:column; align-items:stretch; }
+    .prems-recruiter-panel{ flex-direction:column; align-items:stretch; }
+    .prems-recruiter-panel > *{ width:100%; min-width:0 !important; }
+    .prems-toolbar .prems-btn, .prems-toolbar .prems-select,
+    .prems-toolbar .prems-absent-toggle{ padding-top:11px; padding-bottom:11px; font-size:13.5px; }
+    .prems-toolbar > div{ width:100%; }
+    .prems-export-group{ width:100%; }
+    .prems-export-group .prems-btn{ flex:1; }
+    #prems-admin-toggle, #prems-clear-mine{ width:100%; }
+    .prems-add-form{ flex-direction:column; align-items:stretch; }
+    .prems-add-form input, .prems-add-form select, .prems-add-form button{ width:100% !important; }
   }
 </style>
 
