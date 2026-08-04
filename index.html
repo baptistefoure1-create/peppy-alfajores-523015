@@ -168,6 +168,41 @@
   .prems-empty-cell{ color:#39434f; font-size:11px; text-align:center; display:block; }
   .prems-absent-pill{ font-size:9.5px; color:var(--accent); border:1px solid #e2574c55; border-radius:4px; padding:0 4px; margin-left:4px; }
 
+  /* --- Vue mobile : agenda liste par jour (remplace le tableau en dessous de 640px) --- */
+  .prems-mobile-agenda{ display:none; }
+  .prems-mobile-daytabs{
+    display:flex; gap:6px; overflow-x:auto; padding-bottom:8px; margin-bottom:12px;
+    -webkit-overflow-scrolling:touch;
+  }
+  .prems-mobile-daytabs::-webkit-scrollbar{ height:4px; }
+  .prems-mobile-daytab{
+    flex:0 0 auto; background:var(--panel-2); border:1px solid var(--border); color:var(--muted);
+    border-radius:20px; padding:7px 14px; font-size:12.5px; font-family:'Inter',sans-serif;
+    cursor:pointer; white-space:nowrap;
+  }
+  .prems-mobile-daytab.is-today{ color:var(--live); border-color:#f2a54155; }
+  .prems-mobile-daytab.is-active{ background:var(--accent); color:#1a0f0d; border-color:var(--accent); font-weight:600; }
+  .prems-mobile-slot-row{
+    display:flex; align-items:flex-start; gap:10px; padding:11px 10px; border:1px solid var(--border);
+    border-radius:9px; margin-bottom:8px; background:var(--panel); cursor:pointer;
+  }
+  .prems-mobile-slot-row:active{ filter:brightness(1.15); }
+  .prems-mobile-slot-row.now-row{ background:var(--live-dim); border-color:#f2a54155; }
+  .prems-mobile-slot-row.peak-empty-row{ background:var(--accent-dim); border-color:#e2574c55; }
+  .prems-mobile-slot-time{
+    font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted); white-space:nowrap;
+    padding-top:2px; min-width:66px;
+  }
+  .prems-mobile-slot-row.peak-row .prems-mobile-slot-time{ color:var(--accent); }
+  .prems-mobile-slot-content{ flex:1; display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+  .prems-mobile-empty{ color:#39434f; font-size:12px; }
+  .prems-mobile-slot-row.peak-empty-row .prems-mobile-empty{ color:var(--accent); font-weight:600; }
+
+  @media (max-width:640px){
+    .prems-grid-wrap{ display:none; }
+    .prems-mobile-agenda{ display:block; }
+  }
+
   .prems-legend{ display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; }
   .prems-legend .chip{
     display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text);
@@ -194,6 +229,17 @@
   .prems-status{ font-size:12px; color:var(--muted); margin-top:12px; min-height:16px; }
   .prems-status.err{ color:var(--accent); }
   .prems-status.ok{ color:var(--ok); }
+
+  .prems-conn-banner{
+    display:none; align-items:center; gap:8px;
+    background:var(--accent-dim); border:1px solid #e2574c55; color:var(--accent);
+    border-radius:8px; padding:9px 12px; font-size:12.5px; margin-bottom:14px;
+  }
+  .prems-conn-banner.show{ display:flex; }
+  .prems-conn-banner .dot{
+    width:7px; height:7px; border-radius:50%; background:var(--accent); flex:0 0 auto;
+    animation:pulse 1.4s infinite;
+  }
 
   .prems-recap-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
   .prems-recap-table th, .prems-recap-table td{ border:1px solid var(--border); padding:6px 8px; text-align:left; }
@@ -289,6 +335,10 @@
       </div>
     </div>
     <p class="prems-admin-note" id="prems-admin-note" style="display:none;"></p>
+    <div class="prems-conn-banner" id="prems-conn-banner">
+      <span class="dot"></span>
+      <span id="prems-conn-banner-text">⚠️ Connexion perdue — tes modifications ne sont pas enregistrées. Nouvelle tentative en cours…</span>
+    </div>
 
     <div class="prems-admin-bar" id="prems-admin-bar" style="display:none;">
       <button class="prems-btn ghost small" id="prems-admin-copy">📋 Copier le planning (texte)</button>
@@ -306,6 +356,11 @@
 
     <div class="prems-grid-wrap">
       <table class="prems-grid" id="prems-table"></table>
+    </div>
+
+    <div class="prems-mobile-agenda" id="prems-mobile-agenda">
+      <div class="prems-mobile-daytabs" id="prems-mobile-daytabs"></div>
+      <div class="prems-mobile-slotlist" id="prems-mobile-slotlist"></div>
     </div>
 
     <div class="prems-legend" id="prems-legend"></div>
@@ -351,22 +406,54 @@
   // ============================================================
   const FIREBASE_URL = "https://planning-recrutement-default-rtdb.europe-west1.firebasedatabase.app";
 
+  // --- Suivi de la connexion à Firebase ---
+  // Affiche une bannière persistante (distincte du message de statut ponctuel)
+  // tant que le dernier appel réseau a échoué, pour éviter qu'un recruteur
+  // pense avoir enregistré un créneau qui n'a en fait pas été sauvegardé.
+  let isOnline = true;
+  const connBanner = document.getElementById('prems-conn-banner');
+  const connBannerText = document.getElementById('prems-conn-banner-text');
+  function setConnectionStatus(ok){
+    if(ok === isOnline) return; // pas de changement, on ne spamme pas l'UI
+    isOnline = ok;
+    if(!ok){
+      connBanner.classList.add('show');
+      connBannerText.textContent = "⚠️ Connexion perdue — tes modifications ne sont pas enregistrées. Nouvelle tentative en cours…";
+    } else {
+      connBanner.classList.remove('show');
+      setStatus("Connexion rétablie — planning à jour.", "ok");
+    }
+  }
+
   // --- Petit client REST minimal pour Firebase Realtime Database ---
   // Remplace le window.storage propre aux artéfacts Claude.ai, qui ne
   // fonctionne pas une fois la page hébergée sur un site classique.
   async function fbGet(key){
-    const res = await fetch(`${FIREBASE_URL}/${key}.json`);
-    if(!res.ok) throw new Error('fb get failed: ' + res.status);
-    return await res.json(); // null si absent
+    try{
+      const res = await fetch(`${FIREBASE_URL}/${key}.json`);
+      if(!res.ok) throw new Error('fb get failed: ' + res.status);
+      const data = await res.json(); // null si absent
+      setConnectionStatus(true);
+      return data;
+    }catch(e){
+      setConnectionStatus(false);
+      throw e;
+    }
   }
   async function fbSet(key, value){
-    const res = await fetch(`${FIREBASE_URL}/${key}.json`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(value)
-    });
-    if(!res.ok) throw new Error('fb set failed: ' + res.status);
-    return true;
+    try{
+      const res = await fetch(`${FIREBASE_URL}/${key}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value)
+      });
+      if(!res.ok) throw new Error('fb set failed: ' + res.status);
+      setConnectionStatus(true);
+      return true;
+    }catch(e){
+      setConnectionStatus(false);
+      throw e;
+    }
   }
 
   const root = document.getElementById('prems-root');
@@ -559,6 +646,67 @@
 
     table.querySelectorAll('td.slot').forEach(td=>{
       td.addEventListener('click', ()=> openSlotModal(td.dataset.day, Number(td.dataset.slot)));
+    });
+
+    renderMobileAgenda();
+  }
+
+  // --- Vue mobile : agenda liste par jour (un jour à la fois, plus confortable au doigt) ---
+  let mobileSelectedDayIdx = rawTodayIdx;
+  const mobileDayTabsEl = document.getElementById('prems-mobile-daytabs');
+  const mobileSlotListEl = document.getElementById('prems-mobile-slotlist');
+
+  function renderMobileAgenda(){
+    const ctx = getNowContext();
+
+    mobileDayTabsEl.innerHTML = DAYS.map((d,i)=>{
+      const classes = ['prems-mobile-daytab'];
+      if(i===rawTodayIdx) classes.push('is-today');
+      if(i===mobileSelectedDayIdx) classes.push('is-active');
+      return `<button type="button" class="${classes.join(' ')}" data-day-idx="${i}">${d.slice(0,3)}${i===rawTodayIdx ? ' •' : ''}</button>`;
+    }).join('');
+    mobileDayTabsEl.querySelectorAll('.prems-mobile-daytab').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        mobileSelectedDayIdx = Number(btn.dataset.dayIdx);
+        renderMobileAgenda();
+      });
+    });
+
+    const d = DAYS[mobileSelectedDayIdx];
+    mobileSlotListEl.innerHTML = SLOTS.map(s=>{
+      const isPeak = PEAK_SLOTS.includes(s.idx);
+      const key = `${d}-${s.idx}`;
+      const list = planning[key] || [];
+      const isNow = ctx.inWindow && mobileSelectedDayIdx===ctx.dayIdx && s.idx===ctx.slotIdx;
+      const isPeakEmpty = isPeak && !list.length;
+
+      const rowClasses = ['prems-mobile-slot-row'];
+      if(isPeak) rowClasses.push('peak-row');
+      if(isNow) rowClasses.push('now-row');
+      if(isPeakEmpty) rowClasses.push('peak-empty-row');
+
+      let content;
+      if(list.length){
+        content = list.map(a=>{
+          const r = recruiters.find(r=>r.name===a.titulaire);
+          const grade = r ? r.grade : "";
+          const c = colorFor(a.titulaire);
+          const absentPill = absences[a.titulaire] ? `<span class="prems-absent-pill">absent</span>` : '';
+          const supplBit = a.suppleant ? `<span class="suppl">↳ suppl. ${a.suppleant}</span>` : '';
+          return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
+        }).join('');
+      } else {
+        content = `<span class="prems-mobile-empty">${isPeakEmpty ? '⚠ vide — créneau 🔥' : 'Libre — toucher pour prendre'}</span>`;
+      }
+
+      return `<div class="${rowClasses.join(' ')}" data-day="${d}" data-slot="${s.idx}">
+        <div class="prems-mobile-slot-time">${s.label}${isPeak ? ' 🔥' : ''}</div>
+        <div class="prems-mobile-slot-content">${content}</div>
+      </div>`;
+    }).join('');
+
+    mobileSlotListEl.querySelectorAll('.prems-mobile-slot-row').forEach(row=>{
+      row.addEventListener('click', ()=> openSlotModal(row.dataset.day, Number(row.dataset.slot)));
     });
   }
 
