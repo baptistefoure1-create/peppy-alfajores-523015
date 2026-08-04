@@ -149,6 +149,15 @@
   .prems-btn.ghost.is-admin{ color:var(--ok); border-color:#8bc46a55; }
   .prems-admin-note{ font-size:11.5px; color:var(--ok); margin:0 0 10px; }
 
+  .prems-admin-bar{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    background:#e2574c0d; border:1px dashed #e2574c55; border-radius:9px;
+    padding:10px 12px; margin:0 0 14px;
+  }
+  .prems-admin-stats{ font-size:12px; color:var(--muted); margin-left:auto; }
+  .prems-legend .abs-toggle{ cursor:pointer; margin-left:2px; opacity:.75; }
+  .prems-legend .abs-toggle:hover{ opacity:1; }
+
   .prems-status{ font-size:12px; color:var(--muted); margin-top:12px; min-height:16px; }
   .prems-status.err{ color:var(--accent); }
   .prems-status.ok{ color:var(--ok); }
@@ -215,7 +224,18 @@
         <button class="prems-btn ghost" id="prems-clear-mine">Effacer mes créneaux (cette semaine)</button>
       </div>
     </div>
-    <p class="prems-admin-note" id="prems-admin-note" style="display:none;">Mode administrateur actif — tu peux ajouter, modifier et retirer des recruteurs.</p>
+    <p class="prems-admin-note" id="prems-admin-note" style="display:none;"></p>
+
+    <div class="prems-admin-bar" id="prems-admin-bar" style="display:none;">
+      <button class="prems-btn ghost small" id="prems-admin-copy">📋 Copier le planning (texte)</button>
+      <button class="prems-btn ghost small" id="prems-admin-reset">🗑️ Réinitialiser la semaine</button>
+      <button class="prems-btn ghost small" id="prems-admin-next-week">⏭️ Forcer la semaine suivante</button>
+      <button class="prems-btn ghost small" id="prems-admin-auto-week" style="display:none;">↺ Revenir à la semaine automatique</button>
+      <button class="prems-btn ghost small" id="prems-admin-missing">📣 Qui n'a rien pris ?</button>
+      <button class="prems-btn ghost small" id="prems-admin-history">🗂️ Historique des semaines</button>
+      <button class="prems-btn ghost small" id="prems-admin-log">🧾 Journal admin</button>
+      <span class="prems-admin-stats" id="prems-admin-stats"></span>
+    </div>
 
     <p class="prems-hint" style="margin:-6px 0 14px;">Créneaux de 2h, de 12h à 4h. Clique sur une case pour prendre un créneau, te retirer, ou te mettre suppléant. Max 3 jours différents sur la même tranche horaire par semaine.</p>
 
@@ -250,7 +270,9 @@
   const PALETTE = ["#e2574c","#4ea8de","#8bc46a","#f2a541","#c792ea","#5fd4c0","#f06fa0","#a3b18a","#e8c547","#7aa5d2"];
 
   // Mot de passe partagé pour le mode administrateur.
-  // Change cette valeur pour définir ton propre mot de passe d'équipe.
+  // Change cette valeur pour définir ton propre mot de passe d'équipe,
+  // ou utilise "Changer le mot de passe admin" une fois connecté (il est
+  // alors stocké dans Firebase et prime sur cette valeur par défaut).
   const ADMIN_PASSWORD = "pillbox-admin";
   let isAdmin = false;
 
@@ -294,12 +316,20 @@
   const addForm = document.querySelector('.prems-add-form');
   const adminToggleBtn = document.getElementById('prems-admin-toggle');
   const adminNote = document.getElementById('prems-admin-note');
+  const adminBar = document.getElementById('prems-admin-bar');
+  const adminStatsEl = document.getElementById('prems-admin-stats');
+  const adminMissingBtn = document.getElementById('prems-admin-missing');
+  const adminHistoryBtn = document.getElementById('prems-admin-history');
+  const adminLogBtn = document.getElementById('prems-admin-log');
 
   let recruiters = [];      // [{name, grade}]
   let planning = {};        // { "Lundi-0": [ {titulaire:"Nom", suppleant:"Nom2"|null}, ... ] }
   let absences = {};        // { "Nom": true }
   let weekKey = "";
   let saving = false;
+  let weekOverride = null;  // "YYYY-MM-DD" (lundi forcé par un admin), ou null = automatique
+  let currentAdminName = null; // pseudo saisi par l'admin à la connexion, pour la traçabilité
+  let weekHistory = [];        // [{ weekKey, monday }] liste des semaines déjà connues
 
   function setStatus(msg, kind){
     statusEl.textContent = msg || "";
@@ -313,6 +343,10 @@
   }
 
   // --- Semaine courante (lundi -> dimanche), clé stable pour le stockage ---
+  // Automatique par défaut (basée sur la date du jour). Si un admin force
+  // la semaine suivante (bouton "Forcer la semaine suivante") et que ça
+  // reste au-delà de la semaine automatique, cette surcharge prime — elle
+  // s'efface toute seule dès que la vraie date rattrape la semaine forcée.
   function getMonday(d){
     const date = new Date(d);
     const day = date.getDay(); // 0=dim
@@ -324,6 +358,9 @@
   function fmtDate(d){
     return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'2-digit' });
   }
+  function isoDate(d){
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
   function isoWeekKey(monday){
     const tmp = new Date(monday);
     tmp.setDate(tmp.getDate() + 3); // jeudi de la semaine
@@ -333,10 +370,26 @@
     return `${isoYear}-W${String(week).padStart(2,'0')}`;
   }
 
-  const monday = getMonday(new Date());
-  const sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
-  weekKey = isoWeekKey(monday);
-  weekRangeEl.textContent = `Semaine du ${fmtDate(monday)} au ${fmtDate(sunday)} — le planning et les absences se réinitialisent automatiquement chaque nouvelle semaine`;
+  let monday, sunday, overrideActive;
+
+  function computeWeekContext(){
+    const autoMonday = getMonday(new Date());
+    overrideActive = false;
+    monday = autoMonday;
+    if(weekOverride){
+      const forced = new Date(weekOverride + "T00:00:00");
+      if(forced > autoMonday){ monday = forced; overrideActive = true; }
+    }
+    sunday = new Date(monday); sunday.setDate(sunday.getDate()+6);
+    weekKey = isoWeekKey(monday);
+    weekRangeEl.textContent = `Semaine du ${fmtDate(monday)} au ${fmtDate(sunday)}` +
+      (overrideActive
+        ? ` — semaine forcée manuellement par un admin`
+        : ` — le planning et les absences se réinitialisent automatiquement chaque nouvelle semaine`);
+    document.getElementById('prems-admin-auto-week').style.display = overrideActive ? 'inline-flex' : 'none';
+  }
+
+  computeWeekContext();
 
   const rawTodayIdx = (new Date().getDay() === 0) ? 6 : new Date().getDay()-1; // 0=lundi, jour civil réel
 
@@ -442,7 +495,7 @@
       const c = colorFor(r.name);
       const absentBit = absences[r.name] ? `<span class="prems-absent-pill">absent</span>` : '';
       const adminBtns = isAdmin
-        ? `<span class="edit" data-edit="${r.name}" title="Modifier ce recruteur">✎</span><span class="remove" data-remove="${r.name}" title="Retirer ce recruteur">✕</span>`
+        ? `<span class="abs-toggle" data-abs-toggle="${r.name}" title="${absences[r.name] ? 'Retirer absence' : 'Marquer absent(e)'}">${absences[r.name] ? '✓' : '🚫'}</span><span class="edit" data-edit="${r.name}" title="Modifier ce recruteur">✎</span><span class="remove" data-remove="${r.name}" title="Retirer ce recruteur">✕</span>`
         : '';
       return `<span class="chip"><span class="swatch" style="background:${c}"></span>${r.name} — ${GRADE_LABEL[r.grade]||r.grade}${absentBit}${adminBtns}</span>`;
     }).join('') || `<span class="prems-hint">Ajoute un recruteur ci-dessus pour commencer.</span>`;
@@ -453,14 +506,31 @@
     legendEl.querySelectorAll('[data-edit]').forEach(el=>{
       el.addEventListener('click', ()=> openEditRecruiterModal(el.dataset.edit));
     });
+    legendEl.querySelectorAll('[data-abs-toggle]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        if(!isAdmin) return;
+        const name = el.dataset.absToggle;
+        if(absences[name]) delete absences[name]; else absences[name] = true;
+        renderLegend();
+        renderTable();
+        syncAbsentToggle();
+        saveAbsences();
+        logAdminAction("a modifié le statut d'absence de quelqu'un", `${name} → ${absences[name] ? 'absent' : 'présent'}`);
+      });
+    });
   }
 
   function setAdminUI(){
     addForm.style.display = isAdmin ? 'flex' : 'none';
     adminNote.style.display = isAdmin ? 'block' : 'none';
+    adminNote.textContent = isAdmin
+      ? `Mode administrateur actif — connecté en tant que ${currentAdminName || 'admin'}. Toutes tes actions sont enregistrées dans le journal admin.`
+      : '';
+    adminBar.style.display = isAdmin ? 'flex' : 'none';
     adminToggleBtn.textContent = isAdmin ? '🔓 Mode administrateur (actif)' : '🔒 Mode administrateur';
     adminToggleBtn.classList.toggle('is-admin', isAdmin);
     renderLegend();
+    if(isAdmin) renderAdminStats();
   }
 
   adminToggleBtn.addEventListener('click', ()=>{
@@ -472,13 +542,22 @@
     }
     const pwd = window.prompt("Mot de passe administrateur :");
     if(pwd === null) return;
-    if(pwd === ADMIN_PASSWORD){
-      isAdmin = true;
-      setAdminUI();
-      setStatus("Mode administrateur activé.", "ok");
-    } else {
+    if(pwd !== ADMIN_PASSWORD){
       setStatus("Mot de passe incorrect.", "err");
+      return;
     }
+    let namePrefill = "";
+    try{ namePrefill = localStorage.getItem('prems-admin-name') || ""; }catch(e){}
+    const name = window.prompt("Ton prénom/pseudo (affiché dans le journal admin, pour savoir qui a modifié quoi) :", namePrefill);
+    if(!name || !name.trim()){
+      setStatus("Identification requise pour activer le mode administrateur.", "err");
+      return;
+    }
+    currentAdminName = name.trim();
+    try{ localStorage.setItem('prems-admin-name', currentAdminName); }catch(e){}
+    isAdmin = true;
+    setAdminUI();
+    setStatus(`Mode administrateur activé — connecté en tant que ${currentAdminName}.`, "ok");
   });
 
   function openEditRecruiterModal(name){
@@ -544,6 +623,7 @@
     saveRecruiters();
     savePlanning();
     saveAbsences();
+    logAdminAction("a modifié un recruteur", `${oldName} → ${newName} (${newGrade})`);
     setStatus("Recruteur mis à jour.", "ok");
   }
 
@@ -552,6 +632,7 @@
     renderRecruiterSelect();
     renderLegend();
     updateLiveIndicator();
+    if(isAdmin) renderAdminStats();
   }
 
   // --- Storage ---
@@ -565,6 +646,13 @@
         const r = await fbGet('recruiters');
         recruiters = r || [];
       }catch(e){ console.error(e); recruiters = []; }
+
+      try{
+        const ov = await fbGet('week_override');
+        weekOverride = (ov && ov.monday) ? ov.monday : null;
+      }catch(e){ console.error(e); }
+      computeWeekContext();
+      registerWeekInHistory();
 
       try{
         const p = await fbGet(`planning-${weekKey}`);
@@ -616,6 +704,30 @@
     }
   }
 
+  // --- Journal des actions admin (traçabilité) ---
+  async function logAdminAction(action, detail){
+    try{
+      const entry = { ts: new Date().toISOString(), name: currentAdminName || "Admin inconnu", action, detail: detail || "" };
+      const existing = (await fbGet('admin-logs')) || [];
+      existing.push(entry);
+      while(existing.length > 200) existing.shift();
+      await fbSet('admin-logs', existing);
+    }catch(e){ console.error('log admin action failed', e); }
+  }
+
+  // --- Historique des semaines (pour la consultation en lecture seule) ---
+  async function registerWeekInHistory(){
+    try{
+      const hist = (await fbGet('week_history')) || [];
+      if(!hist.some(h=>h.weekKey===weekKey)){
+        hist.push({ weekKey, monday: isoDate(monday) });
+        hist.sort((a,b)=> a.monday.localeCompare(b.monday));
+        await fbSet('week_history', hist);
+      }
+      weekHistory = hist;
+    }catch(e){ console.error('week history failed', e); }
+  }
+
   // --- Modal de créneau ---
   function closeModal(){ modalLayer.innerHTML = ""; }
 
@@ -659,7 +771,7 @@
       }
     }
 
-    if(isAdmin && list.length){
+    if(isAdmin){
       actionsHtml += `<p class="prems-hint" style="margin-top:6px;">Administrateur :</p>`;
       list.forEach(a=>{
         actionsHtml += `<button class="prems-btn ghost" data-action="admin-remove-titulaire" data-name="${a.titulaire}">Retirer ${a.titulaire} (admin)</button>`;
@@ -667,6 +779,16 @@
           actionsHtml += `<button class="prems-btn ghost" data-action="admin-remove-suppleant" data-name="${a.titulaire}">Retirer le suppléant de ${a.titulaire} (admin)</button>`;
         }
       });
+      const assignable = recruiters.filter(r=> !list.some(a=>a.titulaire===r.name));
+      if(assignable.length){
+        actionsHtml += `
+          <div style="display:flex; gap:6px; margin-top:2px;">
+            <select class="prems-select" id="prems-admin-assign-select" style="flex:1;">
+              ${assignable.map(r=>`<option value="${r.name}">${r.name} (${r.grade})${absences[r.name] ? ' — absent' : ''}</option>`).join('')}
+            </select>
+            <button class="prems-btn ghost" data-action="admin-assign">Assigner (admin)</button>
+          </div>`;
+      }
     }
 
     actionsHtml += `<button class="prems-btn ghost" data-action="close">Fermer</button>`;
@@ -713,12 +835,27 @@
           const targetName = btn.dataset.name;
           planning[key] = list.filter(a=>a.titulaire!==targetName);
           if(!planning[key].length) delete planning[key];
+          logAdminAction("a retiré quelqu'un d'un créneau", `${targetName} — ${day} ${slotLabel}`);
           finishSlotAction();
         } else if(action === 'admin-remove-suppleant'){
           if(!isAdmin) return;
           const targetName = btn.dataset.name;
           const a = list.find(a=>a.titulaire===targetName);
           if(a) a.suppleant = null;
+          logAdminAction("a retiré un(e) suppléant(e)", `suppléant de ${targetName} — ${day} ${slotLabel}`);
+          finishSlotAction();
+        } else if(action === 'admin-assign'){
+          if(!isAdmin) return;
+          const sel = document.getElementById('prems-admin-assign-select');
+          const targetName = sel ? sel.value : null;
+          if(!targetName || list.some(a=>a.titulaire===targetName)){ closeModal(); return; }
+          if(countSameSlotDays(targetName, slotIdx, null) >= MAX_SAME_SLOT_PER_WEEK){
+            if(!window.confirm(`${targetName} a déjà pris la tranche ${slotLabel} sur 3 jours différents cette semaine. Assigner quand même ?`)) return;
+          }
+          const newList = list.slice();
+          newList.push({ titulaire: targetName, suppleant: null });
+          planning[key] = newList;
+          logAdminAction("a assigné quelqu'un à un créneau", `${targetName} — ${day} ${slotLabel}`);
           finishSlotAction();
         }
       });
@@ -731,6 +868,191 @@
     updateLiveIndicator();
     savePlanning();
   }
+
+  function renderAdminStats(){
+    const total = DAYS.length * SLOTS.length;
+    let filled = 0;
+    DAYS.forEach(d=> SLOTS.forEach(s=>{ if((planning[`${d}-${s.idx}`]||[]).length) filled++; }));
+    adminStatsEl.textContent = `${filled}/${total} créneaux couverts — ${total-filled} vide(s) — ${Object.keys(absences).length} absent(s) cette semaine`;
+  }
+
+  // --- Qui n'a rien pris cette semaine ---
+  function computeMissingRecruiters(){
+    return recruiters.filter(r=>{
+      if(absences[r.name]) return false;
+      const hasSlot = Object.keys(planning).some(k => (planning[k]||[]).some(a=>a.titulaire===r.name || a.suppleant===r.name));
+      return !hasSlot;
+    });
+  }
+
+  adminMissingBtn.addEventListener('click', ()=>{
+    if(!isAdmin) return;
+    const missing = computeMissingRecruiters();
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal">
+          <h3>Qui n'a rien pris cette semaine</h3>
+          <p class="sub">Recruteurs actifs (non absents) sans aucun créneau — semaine du ${fmtDate(monday)} au ${fmtDate(sunday)}.</p>
+          <p class="occ-list">${missing.length ? missing.map(r=>`${r.name} — ${GRADE_LABEL[r.grade]||r.grade}`).join('<br>') : "Tout le monde a pris au moins un créneau. 🎉"}</p>
+          <div class="actions"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+  });
+
+  // --- Historique des semaines passées (lecture seule) ---
+  function renderReadOnlyWeekHtml(p, a){
+    const days = DAYS.map(d=>{
+      const rows = SLOTS.map(s=>{
+        const list = p[`${d}-${s.idx}`] || [];
+        if(!list.length) return '';
+        return `${s.label} : ` + list.map(x=>x.titulaire + (x.suppleant ? ` (suppl. ${x.suppleant})` : '')).join(', ');
+      }).filter(Boolean);
+      if(!rows.length) return '';
+      return `<strong>${d}</strong><br>${rows.join('<br>')}`;
+    }).filter(Boolean).join('<br><br>');
+    const absentNames = Object.keys(a || {});
+    return `<div class="occ-list" style="max-height:260px; overflow:auto; margin-top:10px;">${days || "Aucun créneau pris cette semaine-là."}${absentNames.length ? `<br><br><em>Absents cette semaine-là : ${absentNames.join(', ')}</em>` : ''}</div>`;
+  }
+
+  adminHistoryBtn.addEventListener('click', async ()=>{
+    if(!isAdmin) return;
+    let hist = [];
+    try{ hist = (await fbGet('week_history')) || []; }catch(e){ console.error(e); }
+    const past = hist.filter(h=>h.weekKey!==weekKey).sort((a,b)=> b.monday.localeCompare(a.monday));
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:460px;">
+          <h3>Historique des semaines</h3>
+          <p class="sub">Lecture seule — pour vérifier qui a couvert quoi en cas de litige.</p>
+          <div class="actions">
+            <select class="prems-select" id="prems-history-select" style="width:100%;" ${past.length ? '' : 'disabled'}>
+              ${past.length ? past.map(h=>`<option value="${h.weekKey}">Semaine du ${h.monday.split('-').reverse().join('/')}</option>`).join('') : `<option value="">Aucune semaine antérieure enregistrée</option>`}
+            </select>
+            <button class="prems-btn" id="prems-history-load" ${past.length ? '' : 'disabled'}>Afficher</button>
+            <div id="prems-history-content"></div>
+            <button class="prems-btn ghost" data-action="close">Fermer</button>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+    const loadBtn = document.getElementById('prems-history-load');
+    if(loadBtn){
+      loadBtn.addEventListener('click', async ()=>{
+        const wk = document.getElementById('prems-history-select').value;
+        if(!wk) return;
+        loadBtn.disabled = true; loadBtn.textContent = "Chargement…";
+        try{
+          const p = (await fbGet(`planning-${wk}`)) || {};
+          const a = (await fbGet(`absences-${wk}`)) || {};
+          document.getElementById('prems-history-content').innerHTML = renderReadOnlyWeekHtml(p, a);
+        }catch(e){
+          console.error(e);
+          document.getElementById('prems-history-content').innerHTML = `<p class="prems-hint">Échec du chargement de cette semaine.</p>`;
+        }finally{
+          loadBtn.disabled = false; loadBtn.textContent = "Afficher";
+        }
+      });
+    }
+  });
+
+  // --- Journal des actions admin ---
+  adminLogBtn.addEventListener('click', async ()=>{
+    if(!isAdmin) return;
+    let logs = [];
+    try{ logs = (await fbGet('admin-logs')) || []; }catch(e){ console.error(e); }
+    logs = logs.slice().reverse().slice(0,100);
+    const rows = logs.length
+      ? logs.map(l=>{
+          const d = new Date(l.ts);
+          const dateStr = d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) + ' ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+          return `${dateStr} — <strong>${l.name}</strong> : ${l.action}${l.detail ? ` (${l.detail})` : ''}`;
+        }).join('<br>')
+      : "Aucune action enregistrée pour l'instant.";
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:480px;">
+          <h3>Journal des actions admin</h3>
+          <p class="sub">100 dernières actions, les plus récentes en premier.</p>
+          <div class="occ-list" style="max-height:320px; overflow:auto;">${rows}</div>
+          <div class="actions" style="margin-top:12px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+  });
+
+  function buildPlanningText(){
+    const lines = [`Planning recrutement — semaine du ${fmtDate(monday)} au ${fmtDate(sunday)}`, ''];
+    DAYS.forEach(d=>{
+      lines.push(d + ':');
+      let any = false;
+      SLOTS.forEach(s=>{
+        const list = planning[`${d}-${s.idx}`] || [];
+        if(list.length){
+          any = true;
+          lines.push(`  ${s.label} — ` + list.map(a=>a.titulaire + (a.suppleant ? ` (suppl. ${a.suppleant})` : '')).join(', '));
+        }
+      });
+      if(!any) lines.push('  (aucun créneau pris)');
+      lines.push('');
+    });
+    const absentNames = Object.keys(absences);
+    if(absentNames.length) lines.push(`Absents cette semaine : ${absentNames.join(', ')}`);
+    return lines.join('\n');
+  }
+
+  document.getElementById('prems-admin-copy').addEventListener('click', async ()=>{
+    if(!isAdmin) return;
+    const txt = buildPlanningText();
+    try{
+      await navigator.clipboard.writeText(txt);
+      setStatus("Planning copié dans le presse-papier.", "ok");
+    }catch(e){
+      window.prompt("Copie manuelle (Ctrl+C puis Entrée) :", txt);
+    }
+  });
+
+  document.getElementById('prems-admin-reset').addEventListener('click', ()=>{
+    if(!isAdmin) return;
+    if(!window.confirm(`Réinitialiser tout le planning et les absences de la semaine du ${fmtDate(monday)} au ${fmtDate(sunday)} ? Action irréversible.`)) return;
+    planning = {};
+    absences = {};
+    renderAll();
+    savePlanning();
+    saveAbsences();
+    logAdminAction("a réinitialisé la semaine", `semaine du ${fmtDate(monday)}`);
+    setStatus("Planning de la semaine réinitialisé.", "ok");
+  });
+
+  document.getElementById('prems-admin-next-week').addEventListener('click', async ()=>{
+    if(!isAdmin) return;
+    const nextMonday = new Date(monday); nextMonday.setDate(nextMonday.getDate()+7);
+    if(!window.confirm(`Passer manuellement à la semaine du ${fmtDate(nextMonday)} ? À utiliser seulement si le changement automatique n'a pas fonctionné.`)) return;
+    weekOverride = isoDate(nextMonday);
+    try{
+      await fbSet('week_override', { monday: weekOverride });
+    }catch(e){ console.error(e); setStatus("Échec de l'enregistrement de la semaine forcée.", "err"); return; }
+    computeWeekContext();
+    await loadAll(true);
+    logAdminAction("a forcé la semaine suivante", `nouvelle semaine du ${fmtDate(nextMonday)}`);
+    setStatus("Semaine suivante forcée manuellement.", "ok");
+  });
+
+  document.getElementById('prems-admin-auto-week').addEventListener('click', async ()=>{
+    if(!isAdmin) return;
+    if(!window.confirm("Revenir à la semaine automatique (basée sur la date du jour) ?")) return;
+    weekOverride = null;
+    try{
+      await fbSet('week_override', null);
+    }catch(e){ console.error(e); setStatus("Échec de la remise en automatique.", "err"); return; }
+    computeWeekContext();
+    await loadAll(true);
+    logAdminAction("est revenu à la semaine automatique");
+    setStatus("Semaine automatique restaurée.", "ok");
+  });
 
   // --- Actions générales ---
   document.getElementById('prems-add-btn').addEventListener('click', ()=>{
@@ -749,6 +1071,7 @@
     hint.textContent = "";
     renderAll();
     saveRecruiters();
+    logAdminAction("a ajouté un recruteur", `${name} (${gradeSelect.value})`);
   });
 
   function removeRecruiter(name){
@@ -764,6 +1087,7 @@
     saveRecruiters();
     savePlanning();
     saveAbsences();
+    logAdminAction("a retiré un recruteur", name);
   }
 
   document.getElementById('prems-clear-mine').addEventListener('click', ()=>{
