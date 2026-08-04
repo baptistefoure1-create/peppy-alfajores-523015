@@ -177,6 +177,7 @@
   .prems-absent-pill{ font-size:9.5px; color:var(--accent); border:1px solid #e2574c55; border-radius:4px; padding:0 4px; margin-left:4px; }
   .prems-partial-pill{ font-size:9.5px; color:var(--live); border:1px solid #f2a54155; border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; }
   .prems-fatigue-pill{ font-size:9.5px; color:var(--accent); border:1px solid #e2574c55; border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; font-weight:700; }
+  .prems-oral-pill{ font-size:9.5px; color:#4ea8de; border:1px solid #4ea8de55; border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; font-weight:700; }
 
   /* --- Bannière de recommandations personnalisées (habitudes détectées sur plusieurs semaines) --- */
   .prems-reco-banner{
@@ -463,6 +464,8 @@
         <option value="RF">Responsable Formateur (RF)</option>
         <option value="MC">Médecin-Chef (MC)</option>
         <option value="ADD">Assistant de Direction (ADD)</option>
+        <option value="CD">Co-directeur (CD)</option>
+        <option value="DIR">Directeur (Dir.)</option>
       </select>
       <button class="prems-btn" id="prems-add-btn">+ Ajouter</button>
       <span class="prems-hint" id="prems-add-hint"></span>
@@ -523,7 +526,7 @@
       <span class="prems-admin-stats" id="prems-admin-stats"></span>
     </div>
 
-    <p class="prems-hint" style="margin:-6px 0 14px;">Créneaux de 2h, de 10h à 4h. Clique sur une case pour prendre un créneau, te retirer, ou te mettre suppléant. Max 3 jours différents sur la même tranche horaire par semaine. Le prochain créneau, s'il est encore vide, clignote pour attirer l'attention (les créneaux 🔥 forte affluence clignotent en rouge, plus fort, dès qu'ils sont vides) — un administrateur peut désactiver ce clignotement pour tout le monde. ⚡ Si un créneau te ferait dépasser le seuil de créneaux d'affilée réglé par l'administrateur, sa prise est bloquée (impossible de poser).</p>
+    <p class="prems-hint" style="margin:-6px 0 14px;">Créneaux de 2h, de 10h à 4h. Clique sur une case pour prendre un créneau, te retirer, ou te mettre suppléant. Max 3 jours différents sur la même tranche horaire par semaine. Le prochain créneau, s'il est encore vide, clignote pour attirer l'attention (les créneaux 🔥 forte affluence clignotent en rouge, plus fort, dès qu'ils sont vides) — un administrateur peut désactiver ce clignotement pour tout le monde. ⚡ Si un créneau te ferait dépasser le seuil de créneaux d'affilée réglé par l'administrateur, sa prise est bloquée (impossible de poser). 🎤 Sur un créneau que tu occupes, tu peux le marquer « Entretien oral prévue » pour signaler que l'entretien à cet horaire est le tien.</p>
 
     <div class="prems-reco-banner" id="prems-reco-banner" style="display:none;"></div>
 
@@ -587,7 +590,7 @@
   const RECO_MIN_OCCURRENCES = 2;
   // Créneaux à forte affluence : surlignés en rouge quand ils sont vides (idx des SLOTS ci-dessus)
   const PEAK_SLOTS = [3,4]; // 18h–20h, 20h–22h
-  const GRADE_LABEL = { MF:"Médecin Formateur", RF:"Responsable Formateur", MC:"Médecin-Chef", ADD:"Assistant de Direction" };
+  const GRADE_LABEL = { MF:"Médecin Formateur", RF:"Responsable Formateur", MC:"Médecin-Chef", ADD:"Assistant de Direction", CD:"Co-directeur", DIR:"Directeur" };
   const PALETTE = ["#e2574c","#4ea8de","#8bc46a","#f2a541","#c792ea","#5fd4c0","#f06fa0","#a3b18a","#e8c547","#7aa5d2"];
 
   // Mot de passe partagé pour le mode administrateur.
@@ -1032,8 +1035,9 @@
             const partialPill = pLabel ? `<span class="prems-partial-pill" title="Disponible seulement ${pLabel}">⏱ ${pLabel}</span>` : '';
             const isFatigued = fatigueByDay[d].has(s.idx+'|'+a.titulaire);
             const fatiguePill = isFatigued ? `<span class="prems-fatigue-pill" title="Enchaîne plusieurs créneaux d'affilée (fatigue)">⚡ fatigue</span>` : '';
+            const oralPill = a.oral ? `<span class="prems-oral-pill" title="Entretien oral prévu sur ce créneau">🎤 Entretien oral prévue</span>` : '';
             const supplBit = a.suppleant ? `<span class="suppl">↳ suppl. ${a.suppleant}</span>` : '';
-            return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
+            return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}${oralPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
           }).join('') + `</div>`;
         } else {
           content = `<span class="prems-empty-cell">${isPeakEmpty ? '⚠ vide' : (isReco ? '💡' : '+')}</span>`;
@@ -1192,8 +1196,9 @@
           const partialPill = pLabel ? `<span class="prems-partial-pill" title="Disponible seulement ${pLabel}">⏱ ${pLabel}</span>` : '';
           const isFatigued = fatigueSetMobile.has(s.idx+'|'+a.titulaire);
           const fatiguePill = isFatigued ? `<span class="prems-fatigue-pill" title="Enchaîne plusieurs créneaux d'affilée (fatigue)">⚡ fatigue</span>` : '';
+          const oralPill = a.oral ? `<span class="prems-oral-pill" title="Entretien oral prévu sur ce créneau">🎤 Entretien oral prévue</span>` : '';
           const supplBit = a.suppleant ? `<span class="suppl">↳ suppl. ${a.suppleant}</span>` : '';
-          return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
+          return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}${oralPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
         }).join('');
       } else {
         content = `<span class="prems-mobile-empty">${isPeakEmpty ? '⚠ vide — créneau 🔥' : (isRecoMobile ? '💡 ton créneau habituel — toucher pour reprendre' : 'Libre — toucher pour prendre')}</span>`;
@@ -1607,7 +1612,7 @@
     let occLines = list.length
       ? list.map(a=>{
           const pLabel = partialLabel(slotIdx, a.partial);
-          return `${a.titulaire}${pLabel ? ` (⏱ ${pLabel} seulement)` : ''}${a.suppleant ? ` — suppléant : ${a.suppleant}` : ''}`;
+          return `${a.titulaire}${pLabel ? ` (⏱ ${pLabel} seulement)` : ''}${a.oral ? ' — 🎤 entretien oral prévue' : ''}${a.suppleant ? ` — suppléant : ${a.suppleant}` : ''}`;
         }).join('<br>')
       : "Personne pour l'instant sur ce créneau.";
 
@@ -1626,6 +1631,7 @@
         </select>
         <button class="prems-btn ghost small" data-action="update-partial">Mettre à jour la disponibilité</button>
       `;
+      actionsHtml += `<button class="prems-btn ${myAssignment.oral ? 'ghost' : ''}" data-action="toggle-oral">${myAssignment.oral ? '✅ Entretien oral prévue (cliquer pour retirer)' : '🎤 Marquer « Entretien oral prévue »'}</button>`;
       actionsHtml += `<button class="prems-btn" data-action="remove-mine">Me retirer de ce créneau</button>`;
       actionsHtml += `<button class="prems-btn ghost" data-action="propose-swap">🔄 Proposer un échange</button>`;
     } else if(mySuppleantOf){
@@ -1749,6 +1755,10 @@
         } else if(action === 'update-partial'){
           const a = list.find(a=>a.titulaire===me);
           if(a) a.partial = (partialToggleEl && partialToggleEl.checked) ? partialHalfEl.value : null;
+          finishSlotAction();
+        } else if(action === 'toggle-oral'){
+          const a = list.find(a=>a.titulaire===me);
+          if(a) a.oral = !a.oral;
           finishSlotAction();
         } else if(action === 'suppleant'){
           const of = btn.dataset.of;
@@ -2261,7 +2271,7 @@
           any = true;
           lines.push(`  ${s.label} — ` + list.map(a=>{
             const pLabel = partialLabel(s.idx, a.partial);
-            return a.titulaire + (pLabel ? ` (${pLabel} seulement)` : '') + (a.suppleant ? ` (suppl. ${a.suppleant})` : '');
+            return a.titulaire + (pLabel ? ` (${pLabel} seulement)` : '') + (a.oral ? ' (entretien oral prévue)' : '') + (a.suppleant ? ` (suppl. ${a.suppleant})` : '');
           }).join(', '));
         }
       });
