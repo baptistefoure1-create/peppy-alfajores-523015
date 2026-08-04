@@ -367,10 +367,42 @@
   .prems-modal .actions{ display:flex; flex-direction:column; gap:8px; }
   .prems-modal .actions .prems-btn{ width:100%; text-align:center; }
 
+  /* --- Bouton "Plus d'actions" (mobile uniquement) : replie les actions
+     secondaires (favoris, échanges, export, admin…) pour éviter la longue
+     pile de boutons qui provoquait des soucis d'affichage/tap sur téléphone --- */
+  .prems-mobile-menu-btn{ display:none; }
+  #prems-root, #prems-root *{ -webkit-tap-highlight-color: transparent; }
+  #prems-root button, #prems-root .prems-mobile-slot-row, #prems-root .prems-mobile-daytab,
+  #prems-root td.slot, #prems-root .prems-mobile-menu-btn{ touch-action: manipulation; }
+
   @media (max-width:640px){
     .prems-head{ padding:18px 16px; }
     .prems-body{ padding:16px; }
     .prems-head h1{ font-size:20px; }
+
+    /* Cache les actions secondaires par défaut sur mobile ; le bouton
+       "Plus d'actions" les révèle. !important nécessaire car certains de ces
+       blocs ont un style inline (display:flex) posé par le JS (mode admin…). */
+    #prems-root:not(.prems-mobile-menu-open) .prems-mobile-secondary{ display:none !important; }
+    .prems-mobile-menu-btn{
+      display:flex; align-items:center; justify-content:center; gap:6px;
+      width:100%; background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+      border-radius:8px; padding:12px 14px; font-size:13.5px; font-weight:600; cursor:pointer;
+      font-family:'Inter',sans-serif; margin-bottom:10px;
+    }
+    .prems-mobile-menu-btn:active{ transform:scale(.97); filter:brightness(1.15); }
+    #prems-root.prems-mobile-menu-open .prems-mobile-menu-btn{ color:var(--accent); border-color:#e2574c55; }
+
+    /* Empêche le zoom automatique iOS Safari quand on touche un champ
+       (survient dès que font-size < 16px sur un input/select). */
+    .prems-input, .prems-select{ font-size:16px !important; }
+
+    /* Barre admin : boutons empilés en pleine largeur, plus faciles à viser au pouce. */
+    .prems-admin-bar{ flex-direction:column; align-items:stretch; }
+    .prems-admin-bar > *{ width:100%; }
+    .prems-admin-bar .prems-btn{ text-align:center; }
+    .prems-admin-bar .prems-admin-stats{ margin-left:0; text-align:center; padding-top:4px; }
+    .prems-admin-bar span[style*="align-items:center"]{ flex-wrap:wrap; justify-content:center; }
 
     /* La modale se recentre sur l'écran visible (et non sur toute la hauteur
        du widget, qui peut dépasser l'écran une fois la liste de créneaux
@@ -437,6 +469,7 @@
     </div>
 
     <div class="prems-toolbar">
+      <button type="button" class="prems-mobile-menu-btn" id="prems-mobile-menu-btn" aria-expanded="false">☰ Plus d'actions</button>
       <div class="prems-recruiter-panel">
         <span class="prems-hint">Je remplis le planning en tant que :</span>
         <select class="prems-select" id="prems-current-recruiter" style="min-width:200px;"></select>
@@ -444,20 +477,20 @@
           <input type="checkbox" id="prems-absent-toggle">
           Absent(e) cette semaine
         </label>
-        <label class="prems-absent-toggle" id="prems-reminder-label" title="Recevoir un rappel quand ton créneau approche">
+        <label class="prems-absent-toggle prems-mobile-secondary" id="prems-reminder-label" title="Recevoir un rappel quand ton créneau approche">
           <input type="checkbox" id="prems-reminder-toggle">
           🔔 Me rappeler avant mon créneau
         </label>
-        <input type="number" class="prems-input" id="prems-reminder-minutes" min="1" max="60" value="10" style="width:56px; display:none;" title="Minutes avant le créneau">
-        <label class="prems-absent-toggle" id="prems-reminder-sound-label" style="display:none;" title="Jouer un petit son en plus du message">
+        <input type="number" class="prems-input prems-mobile-secondary" id="prems-reminder-minutes" min="1" max="60" value="10" style="width:56px; display:none;" title="Minutes avant le créneau">
+        <label class="prems-absent-toggle prems-mobile-secondary" id="prems-reminder-sound-label" style="display:none;" title="Jouer un petit son en plus du message">
           <input type="checkbox" id="prems-reminder-sound">
           🔊 son
         </label>
-        <button class="prems-btn ghost small" id="prems-fav-save" title="Sauvegarder mes créneaux actuels comme favoris">⭐ Sauver mes favoris</button>
-        <button class="prems-btn ghost small" id="prems-fav-apply" title="Appliquer mes créneaux favoris à cette semaine">⚡ Appliquer mes favoris</button>
-        <button class="prems-btn ghost small" id="prems-swap-btn" title="Voir/proposer des échanges de créneaux">🔄 Mes échanges</button>
+        <button class="prems-btn ghost small prems-mobile-secondary" id="prems-fav-save" title="Sauvegarder mes créneaux actuels comme favoris">⭐ Sauver mes favoris</button>
+        <button class="prems-btn ghost small prems-mobile-secondary" id="prems-fav-apply" title="Appliquer mes créneaux favoris à cette semaine">⚡ Appliquer mes favoris</button>
+        <button class="prems-btn ghost small prems-mobile-secondary" id="prems-swap-btn" title="Voir/proposer des échanges de créneaux">🔄 Mes échanges</button>
       </div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <div class="prems-mobile-secondary" style="display:flex; gap:8px; flex-wrap:wrap;">
         <div class="prems-export-group" style="display:flex; gap:8px;">
           <button class="prems-btn ghost small" id="prems-export-image" title="Exporter le planning en image">📷 Image</button>
           <button class="prems-btn ghost small" id="prems-export-pdf" title="Exporter le planning en PDF (impression)">🖨️ PDF</button>
@@ -472,7 +505,7 @@
       <span id="prems-conn-banner-text">⚠️ Connexion perdue — tes modifications ne sont pas enregistrées. Nouvelle tentative en cours…</span>
     </div>
 
-    <div class="prems-admin-bar" id="prems-admin-bar" style="display:none;">
+    <div class="prems-admin-bar prems-mobile-secondary" id="prems-admin-bar" style="display:none;">
       <button class="prems-btn ghost small" id="prems-admin-copy">📋 Copier le planning (texte)</button>
       <button class="prems-btn ghost small" id="prems-admin-reset">🗑️ Réinitialiser la semaine</button>
       <button class="prems-btn ghost small" id="prems-admin-next-week">⏭️ Forcer la semaine suivante</button>
@@ -2338,6 +2371,17 @@
     renderTable();
     saveAbsences();
   });
+
+  // --- Bouton mobile "Plus d'actions" : replie/déplie les actions secondaires ---
+  const mobileMenuBtn = document.getElementById('prems-mobile-menu-btn');
+  if(mobileMenuBtn){
+    mobileMenuBtn.addEventListener('click', ()=>{
+      const root = document.getElementById('prems-root');
+      const open = root.classList.toggle('prems-mobile-menu-open');
+      mobileMenuBtn.textContent = open ? '✕ Fermer' : '☰ Plus d\'actions';
+      mobileMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  }
 
   setAdminUI();
   loadAll();
