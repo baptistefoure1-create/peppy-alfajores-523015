@@ -157,6 +157,14 @@
   @keyframes peakGlow{ 0%,100%{ background:var(--accent-dim); } 50%{ background:#e2574c1a; } }
   table.prems-grid thead th.peak-col{ color:var(--accent); }
   table.prems-grid td.time-col.peak-col{ color:var(--accent); }
+
+  /* Clignotement générique pour tout créneau vide (hors créneaux 🔥 qui ont déjà
+     leur propre clignotement rouge plus fort). Désactivable par un administrateur
+     via #prems-root.prems-no-blink. */
+  table.prems-grid td.slot.is-empty:not(.peak-empty){ animation:emptyBlink 2.4s infinite; }
+  @keyframes emptyBlink{ 0%,100%{ background:transparent; } 50%{ background:var(--live-dim); } }
+  #prems-root.prems-no-blink table.prems-grid td.slot.peak-empty,
+  #prems-root.prems-no-blink table.prems-grid td.slot.is-empty{ animation:none !important; background:transparent !important; }
   .slot-stack{ display:flex; flex-direction:column; gap:2px; }
   .slot-chip{
     display:inline-flex; align-items:center; gap:5px;
@@ -167,6 +175,21 @@
   .slot-chip .suppl{ opacity:.75; font-weight:500; font-size:9.5px; font-style:italic; }
   .prems-empty-cell{ color:#39434f; font-size:11px; text-align:center; display:block; }
   .prems-absent-pill{ font-size:9.5px; color:var(--accent); border:1px solid #e2574c55; border-radius:4px; padding:0 4px; margin-left:4px; }
+  .prems-partial-pill{ font-size:9.5px; color:var(--live); border:1px solid #f2a54155; border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; }
+  .prems-fatigue-pill{ font-size:9.5px; color:var(--accent); border:1px solid #e2574c55; border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; font-weight:700; }
+
+  /* --- Bannière de recommandations personnalisées (habitudes détectées sur plusieurs semaines) --- */
+  .prems-reco-banner{
+    display:flex; align-items:flex-start; gap:10px;
+    background:var(--ok-dim); border:1px solid #8bc46a55; border-radius:9px;
+    padding:10px 14px; margin-bottom:14px; font-size:13px;
+  }
+  .prems-reco-banner .reco-icon{ font-size:16px; line-height:1.5; }
+  .prems-reco-banner .reco-list{ display:flex; flex-direction:column; gap:6px; flex:1; }
+  .prems-reco-banner .reco-item{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; color:var(--text); }
+  .prems-reco-banner .reco-item b{ color:var(--ok); }
+  table.prems-grid td.slot.prems-reco-cell{ box-shadow: inset 0 0 0 2px #8bc46a88; }
+  .prems-mobile-slot-row.reco-row{ box-shadow: inset 3px 0 0 var(--ok); }
 
   /* --- Vue mobile : agenda liste par jour (remplace le tableau en dessous de 640px) --- */
   .prems-mobile-agenda{ display:none; }
@@ -189,6 +212,10 @@
   .prems-mobile-slot-row:active{ filter:brightness(1.15); }
   .prems-mobile-slot-row.now-row{ background:var(--live-dim); border-color:#f2a54155; }
   .prems-mobile-slot-row.peak-empty-row{ background:var(--accent-dim); border-color:#e2574c55; }
+  .prems-mobile-slot-row.is-empty-row:not(.peak-empty-row){ animation:emptyBlinkMobile 2.4s infinite; }
+  @keyframes emptyBlinkMobile{ 0%,100%{ background:var(--panel); } 50%{ background:var(--live-dim); } }
+  #prems-root.prems-no-blink .prems-mobile-slot-row.peak-empty-row,
+  #prems-root.prems-no-blink .prems-mobile-slot-row.is-empty-row{ animation:none !important; }
   .prems-mobile-slot-time{
     font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted); white-space:nowrap;
     padding-top:2px; min-width:66px;
@@ -198,9 +225,49 @@
   .prems-mobile-empty{ color:#39434f; font-size:12px; }
   .prems-mobile-slot-row.peak-empty-row .prems-mobile-empty{ color:var(--accent); font-weight:600; }
 
+  /* --- Feedback tactile instantané (tap flash) sur les lignes mobiles --- */
+  @keyframes prems-tap-pulse{
+    0%{ transform:scale(1); }
+    45%{ transform:scale(.965); filter:brightness(1.22); }
+    100%{ transform:scale(1); filter:brightness(1); }
+  }
+  .prems-mobile-slot-row.prems-tap-active{ animation: prems-tap-pulse .22s ease; }
+  @media (max-width:640px){
+    .prems-btn:active, .prems-mobile-daytab:active{ transform:scale(.94); filter:brightness(1.15); }
+  }
+
+  /* --- Squelettes de chargement (premier chargement seulement) --- */
+  .prems-skeleton-row{
+    display:flex; align-items:center; gap:10px; padding:11px 10px; border:1px solid var(--border);
+    border-radius:9px; margin-bottom:8px; background:var(--panel);
+  }
+  .prems-skeleton-bar{
+    height:12px; border-radius:4px;
+    background:linear-gradient(90deg, var(--panel-2) 25%, var(--border) 37%, var(--panel-2) 63%);
+    background-size:400% 100%; animation: prems-shimmer 1.4s ease infinite;
+  }
+  @keyframes prems-shimmer{ 0%{ background-position:100% 50%; } 100%{ background-position:0 50%; } }
+
+  /* --- Transition de balayage (swipe) entre les jours --- */
+  .prems-mobile-slotlist{ transition: transform .18s ease, opacity .18s ease; }
+  .prems-mobile-slotlist.slide-left{ transform: translateX(16px); opacity:.35; }
+  .prems-mobile-slotlist.slide-right{ transform: translateX(-16px); opacity:.35; }
+  .prems-mobile-slotlist.slide-active{ transform: translateX(0); opacity:1; }
+
+  /* --- Bouton flottant "Créneau actuel" --- */
+  .prems-fab-now{
+    display:none; align-items:center; gap:6px;
+    position:sticky; bottom:14px; width:fit-content; margin:10px 0 4px auto;
+    background:var(--accent); color:#1a0f0d; border:none; border-radius:24px;
+    padding:11px 16px; font-size:12.5px; font-weight:600; cursor:pointer;
+    box-shadow:0 8px 20px #000a; font-family:'Inter',sans-serif; z-index:5;
+  }
+  .prems-fab-now:active{ transform:scale(.95); }
+
   @media (max-width:640px){
     .prems-grid-wrap{ display:none; }
     .prems-mobile-agenda{ display:block; }
+    .prems-fab-now{ display:flex; }
   }
 
   .prems-legend{ display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; }
@@ -270,7 +337,7 @@
     .prems-grid-wrap{ display:block !important; overflow:visible !important; max-height:none !important; border:none; }
     .prems-mobile-agenda{ display:none !important; }
     table.prems-grid thead th, table.prems-grid td.time-col{ position:static !important; }
-    table.prems-grid td.slot.peak-empty{ animation:none !important; }
+    table.prems-grid td.slot.peak-empty, table.prems-grid td.slot.is-empty{ animation:none !important; }
   }
 
   /* --- Export image : version épurée capturée par html2canvas (sans les
@@ -283,7 +350,7 @@
   .prems-exporting .prems-grid-wrap{ display:block !important; overflow:visible !important; max-height:none !important; }
   .prems-exporting .prems-mobile-agenda{ display:none !important; }
   .prems-exporting table.prems-grid thead th, .prems-exporting table.prems-grid td.time-col{ position:static !important; }
-  .prems-exporting table.prems-grid td.slot.peak-empty{ animation:none !important; }
+  .prems-exporting table.prems-grid td.slot.peak-empty, .prems-exporting table.prems-grid td.slot.is-empty{ animation:none !important; }
   .prems-exporting.theme-light{ box-shadow:none; }
 
   .prems-modal-backdrop{
@@ -308,8 +375,20 @@
     /* La modale se recentre sur l'écran visible (et non sur toute la hauteur
        du widget, qui peut dépasser l'écran une fois la liste de créneaux
        affichée) — sinon elle peut s'ouvrir hors-champ et forcer à scroller. */
-    .prems-modal-backdrop{ position:fixed; padding:16px; }
-    .prems-modal{ max-height:calc(100vh - 32px); overflow-y:auto; }
+    /* La modale devient une feuille qui glisse depuis le bas de l'écran
+       (bottom sheet), plus naturelle et accessible au pouce sur mobile. */
+    .prems-modal-backdrop{ position:fixed; padding:0; align-items:flex-end; }
+    .prems-modal{
+      max-width:100%; width:100%; border-radius:18px 18px 0 0;
+      max-height:86vh; overflow-y:auto;
+      padding:10px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+      animation: prems-sheet-up .26s cubic-bezier(.2,.8,.2,1);
+    }
+    .prems-modal::before{
+      content:''; display:block; width:38px; height:4px; border-radius:3px;
+      background:var(--border); margin:2px auto 14px;
+    }
+    @keyframes prems-sheet-up{ from{ transform:translateY(100%); } to{ transform:translateY(0); } }
 
     /* Boutons et champs plus grands et empilés : zones tactiles plus faciles
        à viser avec le pouce qu'une rangée de petits boutons collés. */
@@ -365,6 +444,15 @@
           <input type="checkbox" id="prems-absent-toggle">
           Absent(e) cette semaine
         </label>
+        <label class="prems-absent-toggle" id="prems-reminder-label" title="Recevoir un rappel quand ton créneau approche">
+          <input type="checkbox" id="prems-reminder-toggle">
+          🔔 Me rappeler avant mon créneau
+        </label>
+        <input type="number" class="prems-input" id="prems-reminder-minutes" min="1" max="60" value="10" style="width:56px; display:none;" title="Minutes avant le créneau">
+        <label class="prems-absent-toggle" id="prems-reminder-sound-label" style="display:none;" title="Jouer un petit son en plus du message">
+          <input type="checkbox" id="prems-reminder-sound">
+          🔊 son
+        </label>
         <button class="prems-btn ghost small" id="prems-fav-save" title="Sauvegarder mes créneaux actuels comme favoris">⭐ Sauver mes favoris</button>
         <button class="prems-btn ghost small" id="prems-fav-apply" title="Appliquer mes créneaux favoris à cette semaine">⚡ Appliquer mes favoris</button>
         <button class="prems-btn ghost small" id="prems-swap-btn" title="Voir/proposer des échanges de créneaux">🔄 Mes échanges</button>
@@ -393,10 +481,18 @@
       <button class="prems-btn ghost small" id="prems-admin-recap">📊 Récap créneaux</button>
       <button class="prems-btn ghost small" id="prems-admin-history">🗂️ Historique des semaines</button>
       <button class="prems-btn ghost small" id="prems-admin-log">🧾 Journal admin</button>
+      <button class="prems-btn ghost small" id="prems-admin-blink-toggle">🔕 Désactiver le clignotement des créneaux vides</button>
+      <span style="display:flex; align-items:center; gap:6px;">
+        <label class="prems-hint" for="prems-fatigue-input" title="Nombre max de créneaux d'affilée par jour. Au-delà, la prise du créneau est bloquée pour la personne concernée.">⚡ Seuil créneaux d'affilée (max/jour) :</label>
+        <input type="number" class="prems-input" id="prems-fatigue-input" min="1" max="8" step="1" style="width:52px;" title="Au-delà de ce nombre de créneaux d'affilée le même jour, la prise est bloquée.">
+        <button class="prems-btn ghost small" id="prems-fatigue-save">Enregistrer</button>
+      </span>
       <span class="prems-admin-stats" id="prems-admin-stats"></span>
     </div>
 
-    <p class="prems-hint" style="margin:-6px 0 14px;">Créneaux de 2h, de 12h à 4h. Clique sur une case pour prendre un créneau, te retirer, ou te mettre suppléant. Max 3 jours différents sur la même tranche horaire par semaine. Les créneaux 🔥 (forte affluence) encore vides sont surlignés en rouge.</p>
+    <p class="prems-hint" style="margin:-6px 0 14px;">Créneaux de 2h, de 10h à 4h. Clique sur une case pour prendre un créneau, te retirer, ou te mettre suppléant. Max 3 jours différents sur la même tranche horaire par semaine. Le prochain créneau, s'il est encore vide, clignote pour attirer l'attention (les créneaux 🔥 forte affluence clignotent en rouge, plus fort, dès qu'ils sont vides) — un administrateur peut désactiver ce clignotement pour tout le monde. ⚡ Si un créneau te ferait dépasser le seuil de créneaux d'affilée réglé par l'administrateur, sa prise est bloquée (impossible de poser).</p>
+
+    <div class="prems-reco-banner" id="prems-reco-banner" style="display:none;"></div>
 
     <div class="prems-grid-wrap">
       <table class="prems-grid" id="prems-table"></table>
@@ -405,6 +501,7 @@
     <div class="prems-mobile-agenda" id="prems-mobile-agenda">
       <div class="prems-mobile-daytabs" id="prems-mobile-daytabs"></div>
       <div class="prems-mobile-slotlist" id="prems-mobile-slotlist"></div>
+      <button type="button" class="prems-fab-now" id="prems-fab-now" title="Aller à mon créneau actuel">🕐 Maintenant</button>
     </div>
 
     <div class="prems-legend" id="prems-legend"></div>
@@ -418,18 +515,26 @@
 <script>
 (function(){
   const DAYS = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
-  // Tranches de 2h, de 12h à 4h (8 créneaux)
+  // Tranches de 2h, de 10h à 4h (9 créneaux)
+  // Note : idx:8 attribué au nouveau créneau 10h–12h (plutôt que de renuméroter
+  // les autres) pour ne pas décaler les créneaux déjà enregistrés dans Firebase.
   const SLOTS = [
-    { idx:0, label:"12h–14h" },
-    { idx:1, label:"14h–16h" },
-    { idx:2, label:"16h–18h" },
-    { idx:3, label:"18h–20h" },
-    { idx:4, label:"20h–22h" },
-    { idx:5, label:"22h–00h" },
-    { idx:6, label:"00h–02h" },
-    { idx:7, label:"02h–04h" },
+    { idx:8, label:"10h–12h", startHour:10 },
+    { idx:0, label:"12h–14h", startHour:12 },
+    { idx:1, label:"14h–16h", startHour:14 },
+    { idx:2, label:"16h–18h", startHour:16 },
+    { idx:3, label:"18h–20h", startHour:18 },
+    { idx:4, label:"20h–22h", startHour:20 },
+    { idx:5, label:"22h–00h", startHour:22 },
+    { idx:6, label:"00h–02h", startHour:0 },
+    { idx:7, label:"02h–04h", startHour:2 },
   ];
   const MAX_SAME_SLOT_PER_WEEK = 3;
+  // Recommandations personnalisées : si un(e) recruteur(trice) a occupé le même
+  // jour+créneau sur au moins RECO_MIN_OCCURRENCES des RECO_LOOKBACK_WEEKS
+  // dernières semaines connues, on lui recommande de reprendre ce créneau.
+  const RECO_LOOKBACK_WEEKS = 4;
+  const RECO_MIN_OCCURRENCES = 2;
   // Créneaux à forte affluence : surlignés en rouge quand ils sont vides (idx des SLOTS ci-dessus)
   const PEAK_SLOTS = [3,4]; // 18h–20h, 20h–22h
   const GRADE_LABEL = { MF:"Médecin Formateur", RF:"Responsable Formateur", MC:"Médecin-Chef", ADD:"Assistant de Direction" };
@@ -528,6 +633,10 @@
   const legendEl = document.getElementById('prems-legend');
   const absentToggle = document.getElementById('prems-absent-toggle');
   const absentLabel = document.getElementById('prems-absent-label');
+  const reminderToggle = document.getElementById('prems-reminder-toggle');
+  const reminderMinutesInput = document.getElementById('prems-reminder-minutes');
+  const reminderSoundToggle = document.getElementById('prems-reminder-sound');
+  const reminderSoundLabel = document.getElementById('prems-reminder-sound-label');
   const modalLayer = document.getElementById('prems-modal-layer');
   const addForm = document.querySelector('.prems-add-form');
   const adminToggleBtn = document.getElementById('prems-admin-toggle');
@@ -537,6 +646,9 @@
   const adminMissingBtn = document.getElementById('prems-admin-missing');
   const adminHistoryBtn = document.getElementById('prems-admin-history');
   const adminLogBtn = document.getElementById('prems-admin-log');
+  const blinkToggleBtn = document.getElementById('prems-admin-blink-toggle');
+  const fatigueInputEl = document.getElementById('prems-fatigue-input');
+  const fatigueSaveBtn = document.getElementById('prems-fatigue-save');
 
   let recruiters = [];      // [{name, grade}]
   let planning = {};        // { "Lundi-0": [ {titulaire:"Nom", suppleant:"Nom2"|null}, ... ] }
@@ -546,6 +658,20 @@
   let weekOverride = null;  // "YYYY-MM-DD" (lundi forcé par un admin), ou null = automatique
   let currentAdminName = null; // pseudo saisi par l'admin à la connexion, pour la traçabilité
   let weekHistory = [];        // [{ weekKey, monday }] liste des semaines déjà connues
+  let blinkDisabled = false;   // réglage partagé : un admin peut désactiver le clignotement des créneaux vides pour tout le monde
+  let fatigueThreshold = 3;    // réglage partagé : nb max de créneaux d'affilée autorisé avant blocage "fatigue"
+  let myRecommendations = [];  // [{day, slotIdx, key, count}] recommandations pour le recruteur actuellement sélectionné
+  let recoComputedFor = null;  // "nom|weekKey" déjà calculé, pour éviter de refaire les requêtes Firebase inutilement
+  const recoBannerEl = document.getElementById('prems-reco-banner');
+
+  function applyBlinkUI(){
+    root.classList.toggle('prems-no-blink', blinkDisabled);
+    if(blinkToggleBtn){
+      blinkToggleBtn.textContent = blinkDisabled
+        ? '🔔 Réactiver le clignotement des créneaux vides'
+        : '🔕 Désactiver le clignotement des créneaux vides';
+    }
+  }
 
   function setStatus(msg, kind){
     statusEl.textContent = msg || "";
@@ -612,6 +738,9 @@
   function getNowContext(){
     const now = new Date();
     const hour = now.getHours();
+    if(hour >= 10 && hour < 12){
+      return { dayIdx: rawTodayIdx, slotIdx: 8, inWindow:true }; // 10h–12h
+    }
     if(hour >= 12){
       return { dayIdx: rawTodayIdx, slotIdx: Math.floor((hour-12)/2), inWindow:true };
     }
@@ -622,10 +751,26 @@
     return { dayIdx: rawTodayIdx, slotIdx:-1, inWindow:false };
   }
 
+  // --- Détermine la tranche horaire "suivante" (celle qui doit clignoter si elle est vide) ---
+  // Se base sur l'ordre chronologique du tableau SLOTS plutôt que sur les valeurs
+  // numériques de idx (qui ne sont plus strictement croissantes depuis l'ajout du 10h–12h).
+  function getNextSlotTarget(){
+    const ctx = getNowContext();
+    if(ctx.inWindow){
+      const pos = SLOTS.findIndex(s=>s.idx===ctx.slotIdx);
+      let nextPos = pos + 1;
+      let dayIdx = ctx.dayIdx;
+      if(pos===-1 || nextPos >= SLOTS.length){ nextPos = 0; dayIdx = (dayIdx + 1) % 7; }
+      return { dayIdx, slotIdx: SLOTS[nextPos].idx };
+    }
+    // Hors fenêtre (4h–10h) : la prochaine tranche est celle d'aujourd'hui à 10h.
+    return { dayIdx: rawTodayIdx, slotIdx: SLOTS[0].idx };
+  }
+
   function updateLiveIndicator(){
     const ctx = getNowContext();
     if(!ctx.inWindow){
-      liveTextEl.textContent = "Hors créneaux (12h–04h)";
+      liveTextEl.textContent = "Hors créneaux (10h–04h)";
       liveDot.style.background = "#39434f";
       return;
     }
@@ -634,6 +779,159 @@
     liveTextEl.textContent = list.length
       ? `En poste : ${list.map(a => a.titulaire + (a.suppleant ? ` (suppl. ${a.suppleant})` : '')).join(', ')}`
       : "Personne d'inscrit sur ce créneau";
+  }
+
+  // --- Découpage d'un créneau de 2h en deux moitiés d'1h (pour les dispos partielles) ---
+  function formatHour(h){
+    const hh = ((h % 24) + 24) % 24;
+    return String(hh).padStart(2,'0') + 'h';
+  }
+  function halfLabels(slotIdx){
+    const s = SLOTS.find(s=>s.idx===slotIdx);
+    if(!s) return { first:"", second:"" };
+    const mid = s.startHour + 1;
+    const end = s.startHour + 2;
+    return {
+      first: `${formatHour(s.startHour)}–${formatHour(mid)}`,
+      second: `${formatHour(mid)}–${formatHour(end)}`,
+    };
+  }
+  function partialLabel(slotIdx, partial){
+    if(!partial) return null;
+    const h = halfLabels(slotIdx);
+    return partial === 'first' ? h.first : h.second;
+  }
+
+  // --- Rappel personnel avant son propre créneau (réglage local au navigateur) ---
+  const REMINDER_KEY = 'prems-reminder-enabled';
+  const REMINDER_MIN_KEY = 'prems-reminder-minutes';
+  const REMINDER_SOUND_KEY = 'prems-reminder-sound';
+  let reminderEnabled = false;
+  let reminderMinutes = 10;
+  let reminderSoundEnabled = false;
+  const notifiedSlots = new Set(); // évite de répéter le même rappel
+
+  try{ reminderEnabled = localStorage.getItem(REMINDER_KEY) === '1'; }catch(e){}
+  try{ reminderMinutes = parseInt(localStorage.getItem(REMINDER_MIN_KEY), 10) || 10; }catch(e){}
+  try{ reminderSoundEnabled = localStorage.getItem(REMINDER_SOUND_KEY) === '1'; }catch(e){}
+
+  function applyReminderUI(){
+    reminderToggle.checked = reminderEnabled;
+    reminderMinutesInput.value = reminderMinutes;
+    reminderMinutesInput.style.display = reminderEnabled ? '' : 'none';
+    reminderSoundToggle.checked = reminderSoundEnabled;
+    reminderSoundLabel.style.display = reminderEnabled ? '' : 'none';
+  }
+  applyReminderUI();
+
+  reminderToggle.addEventListener('change', ()=>{
+    reminderEnabled = reminderToggle.checked;
+    try{ localStorage.setItem(REMINDER_KEY, reminderEnabled ? '1' : '0'); }catch(e){}
+    applyReminderUI();
+    if(reminderEnabled && 'Notification' in window && Notification.permission === 'default'){
+      Notification.requestPermission();
+    }
+  });
+  reminderMinutesInput.addEventListener('change', ()=>{
+    const v = parseInt(reminderMinutesInput.value, 10);
+    reminderMinutes = (v && v > 0) ? v : 10;
+    reminderMinutesInput.value = reminderMinutes;
+    try{ localStorage.setItem(REMINDER_MIN_KEY, String(reminderMinutes)); }catch(e){}
+  });
+  reminderSoundToggle.addEventListener('change', ()=>{
+    reminderSoundEnabled = reminderSoundToggle.checked;
+    try{ localStorage.setItem(REMINDER_SOUND_KEY, reminderSoundEnabled ? '1' : '0'); }catch(e){}
+  });
+
+  // Date/heure réelle de début d'un créneau (dayIdx = colonne du jour, dans la semaine réelle en cours).
+  function getSlotDateTime(dayIdx, slotIdx){
+    const s = SLOTS.find(s=>s.idx===slotIdx);
+    if(!s) return null;
+    const dt = new Date();
+    dt.setDate(dt.getDate() + (dayIdx - rawTodayIdx));
+    dt.setHours(s.startHour, 0, 0, 0);
+    if(s.startHour < 10) dt.setDate(dt.getDate() + 1); // 00h–02h / 02h–04h : nuit qui suit ce jour-là
+    return dt;
+  }
+
+  function playReminderBeep(){
+    try{
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if(!AudioCtx) return;
+      const ctxAudio = new AudioCtx();
+      const osc = ctxAudio.createOscillator();
+      const gain = ctxAudio.createGain();
+      osc.type = 'sine'; osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.001, ctxAudio.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.2, ctxAudio.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctxAudio.currentTime + 0.4);
+      osc.connect(gain); gain.connect(ctxAudio.destination);
+      osc.start();
+      osc.stop(ctxAudio.currentTime + 0.45);
+    }catch(e){ console.error(e); }
+  }
+
+  function checkMyUpcomingSlotReminder(){
+    if(!reminderEnabled || overrideActive) return;
+    const me = recruiterSelect.value;
+    if(!me) return;
+    const today = DAYS[rawTodayIdx];
+    const now = new Date();
+    SLOTS.forEach(s=>{
+      const list = planning[`${today}-${s.idx}`] || [];
+      if(!list.some(a=>a.titulaire===me)) return;
+      const dt = getSlotDateTime(rawTodayIdx, s.idx);
+      if(!dt) return;
+      const diffMin = (dt - now) / 60000;
+      const notifyKey = `${weekKey}-${today}-${s.idx}`;
+      if(diffMin > 0 && diffMin <= reminderMinutes && !notifiedSlots.has(notifyKey)){
+        notifiedSlots.add(notifyKey);
+        const msg = `🔔 Ton créneau ${s.label} commence dans ${Math.round(diffMin)} min !`;
+        setStatus(msg, "ok");
+        if('Notification' in window && Notification.permission === 'granted'){
+          try{ new Notification('Planning recrutement', { body: msg }); }catch(e){}
+        }
+        if(reminderSoundEnabled) playReminderBeep();
+      }
+    });
+  }
+
+  // --- Fatigue : détection des créneaux d'affilée sur une même journée ---
+  // "D'affilée" = tranches consécutives dans l'ordre chronologique de SLOTS, sur la même colonne jour.
+  function maxConsecutiveForName(day, name, extraSlotIdx){
+    let maxRun = 0, run = 0;
+    SLOTS.forEach(s=>{
+      const list = planning[`${day}-${s.idx}`] || [];
+      let occupies = list.some(a=>a.titulaire===name);
+      if(s.idx === extraSlotIdx) occupies = true;
+      if(occupies){ run++; if(run>maxRun) maxRun = run; } else { run = 0; }
+    });
+    return maxRun;
+  }
+
+  // Renvoie l'ensemble des "slotIdx|Nom" faisant partie d'une série de créneaux
+  // d'affilée strictement supérieure au seuil réglé par l'admin, pour un jour donné.
+  function fatigueFlaggedSlots(day){
+    const flagged = new Set();
+    const names = new Set();
+    recruiters.forEach(r=> names.add(r.name));
+    SLOTS.forEach(s=>{
+      (planning[`${day}-${s.idx}`] || []).forEach(a=> names.add(a.titulaire));
+    });
+    names.forEach(name=>{
+      let run = [];
+      const flush = ()=>{
+        if(run.length > fatigueThreshold) run.forEach(idx=> flagged.add(idx+'|'+name));
+        run = [];
+      };
+      SLOTS.forEach(s=>{
+        const list = planning[`${day}-${s.idx}`] || [];
+        if(list.some(a=>a.titulaire===name)) run.push(s.idx);
+        else flush();
+      });
+      flush();
+    });
+    return flagged;
   }
 
   // --- Règle des 3 créneaux identiques max par semaine, sur des jours différents ---
@@ -656,6 +954,10 @@
     thead += `</tr></thead>`;
 
     const ctx = getNowContext();
+    const nextTarget = getNextSlotTarget();
+    const fatigueByDay = {};
+    DAYS.forEach(d=> fatigueByDay[d] = fatigueFlaggedSlots(d));
+    const recoKeySet = new Set(myRecommendations.map(r=>r.key));
 
     let tbody = `<tbody>`;
     SLOTS.forEach(s=>{
@@ -667,6 +969,8 @@
         const list = planning[key] || [];
         const isNow = ctx.inWindow && i===ctx.dayIdx && s.idx===ctx.slotIdx;
         const isPeakEmpty = isPeak && !list.length;
+        const isNextSlot = i===nextTarget.dayIdx && s.idx===nextTarget.slotIdx;
+        const isReco = recoKeySet.has(key) && !list.length;
         let content;
         if(list.length){
           content = `<div class="slot-stack">` + list.map(a=>{
@@ -674,13 +978,19 @@
             const grade = r ? r.grade : "";
             const c = colorFor(a.titulaire);
             const absentPill = absences[a.titulaire] ? `<span class="prems-absent-pill">absent</span>` : '';
+            const pLabel = partialLabel(s.idx, a.partial);
+            const partialPill = pLabel ? `<span class="prems-partial-pill" title="Disponible seulement ${pLabel}">⏱ ${pLabel}</span>` : '';
+            const isFatigued = fatigueByDay[d].has(s.idx+'|'+a.titulaire);
+            const fatiguePill = isFatigued ? `<span class="prems-fatigue-pill" title="Enchaîne plusieurs créneaux d'affilée (fatigue)">⚡ fatigue</span>` : '';
             const supplBit = a.suppleant ? `<span class="suppl">↳ suppl. ${a.suppleant}</span>` : '';
-            return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
+            return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
           }).join('') + `</div>`;
         } else {
-          content = `<span class="prems-empty-cell">${isPeakEmpty ? '⚠ vide' : '+'}</span>`;
+          content = `<span class="prems-empty-cell">${isPeakEmpty ? '⚠ vide' : (isReco ? '💡' : '+')}</span>`;
         }
-        tbody += `<td class="slot ${isNow ? 'now-col' : ''}${isPeakEmpty ? ' peak-empty' : ''}" data-day="${d}" data-slot="${s.idx}" title="${isPeakEmpty ? 'Créneau à forte affluence encore vide' : ''}">${content}</td>`;
+        const isEmpty = isNextSlot && !list.length;
+        const titleAttr = isPeakEmpty ? 'Créneau à forte affluence encore vide' : (isReco ? 'Ton créneau habituel — recommandé pour toi' : (isEmpty ? 'Prochain créneau, encore vide' : ''));
+        tbody += `<td class="slot ${isNow ? 'now-col' : ''}${isPeakEmpty ? ' peak-empty' : ''}${isEmpty ? ' is-empty' : ''}${isReco ? ' prems-reco-cell' : ''}" data-day="${d}" data-slot="${s.idx}" title="${titleAttr}">${content}</td>`;
       });
       tbody += `</tr>`;
     });
@@ -699,9 +1009,87 @@
   let mobileSelectedDayIdx = rawTodayIdx;
   const mobileDayTabsEl = document.getElementById('prems-mobile-daytabs');
   const mobileSlotListEl = document.getElementById('prems-mobile-slotlist');
+  const fabNowBtn = document.getElementById('prems-fab-now');
+
+  function vibrateLight(ms){
+    if('vibrate' in navigator){ try{ navigator.vibrate(ms); }catch(e){} }
+  }
+
+  // Change de jour dans la vue mobile avec une petite transition de glissement,
+  // dans le sens du balayage (delta>0 = vers la droite = jour suivant).
+  function changeDay(delta){
+    let next = mobileSelectedDayIdx + delta;
+    if(next < 0) next = DAYS.length - 1;
+    if(next > DAYS.length - 1) next = 0;
+    mobileSelectedDayIdx = next;
+    renderMobileAgenda();
+    mobileSlotListEl.classList.remove('slide-left','slide-right','slide-active');
+    mobileSlotListEl.classList.add(delta > 0 ? 'slide-left' : 'slide-right');
+    requestAnimationFrame(()=> requestAnimationFrame(()=>{
+      mobileSlotListEl.classList.add('slide-active');
+    }));
+    vibrateLight(8);
+    setTimeout(()=> mobileSlotListEl.classList.remove('slide-left','slide-right','slide-active'), 260);
+  }
+
+  // --- Balayage tactile (swipe) gauche/droite pour changer de jour ---
+  let touchStartX = null, touchStartY = null, touchIsHorizontal = false;
+  const SWIPE_THRESHOLD = 42;
+  mobileSlotListEl.addEventListener('touchstart', (e)=>{
+    if(e.touches.length !== 1) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchIsHorizontal = false;
+  }, { passive:true });
+  mobileSlotListEl.addEventListener('touchmove', (e)=>{
+    if(touchStartX === null || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    if(Math.abs(dx) > Math.abs(dy)) touchIsHorizontal = true;
+  }, { passive:true });
+  mobileSlotListEl.addEventListener('touchend', (e)=>{
+    if(touchStartX === null) return;
+    const endX = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientX : touchStartX;
+    const dx = endX - touchStartX;
+    touchStartX = null;
+    if(!touchIsHorizontal || Math.abs(dx) < SWIPE_THRESHOLD) return;
+    changeDay(dx < 0 ? 1 : -1);
+  });
+
+  // --- Bouton flottant "Créneau actuel" : saute au jour/tranche en cours et le met en évidence ---
+  function scrollToCurrentSlot(){
+    const ctx = getNowContext();
+    const target = ctx.inWindow ? { dayIdx: ctx.dayIdx, slotIdx: ctx.slotIdx } : getNextSlotTarget();
+    mobileSelectedDayIdx = target.dayIdx;
+    renderMobileAgenda();
+    vibrateLight(15);
+    requestAnimationFrame(()=>{
+      const row = mobileSlotListEl.querySelector(`[data-slot="${target.slotIdx}"]`);
+      if(row){
+        row.scrollIntoView({ behavior:'smooth', block:'center' });
+        row.classList.add('prems-tap-active');
+        setTimeout(()=> row.classList.remove('prems-tap-active'), 400);
+      }
+      const activeTab = mobileDayTabsEl.querySelector('.is-active');
+      if(activeTab) activeTab.scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' });
+    });
+  }
+  if(fabNowBtn) fabNowBtn.addEventListener('click', scrollToCurrentSlot);
+
+  // --- Squelette de chargement affiché pendant le tout premier chargement ---
+  let firstLoadRendered = false;
+  function renderMobileSkeleton(){
+    if(!mobileSlotListEl) return;
+    mobileSlotListEl.innerHTML = Array.from({ length:6 }).map((_, i)=> `
+      <div class="prems-skeleton-row">
+        <div class="prems-skeleton-bar" style="width:54px;"></div>
+        <div class="prems-skeleton-bar" style="flex:1; max-width:${60 + (i%3)*15}%;"></div>
+      </div>`).join('');
+  }
 
   function renderMobileAgenda(){
     const ctx = getNowContext();
+    const nextTarget = getNextSlotTarget();
 
     mobileDayTabsEl.innerHTML = DAYS.map((d,i)=>{
       const classes = ['prems-mobile-daytab'];
@@ -711,23 +1099,37 @@
     }).join('');
     mobileDayTabsEl.querySelectorAll('.prems-mobile-daytab').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        mobileSelectedDayIdx = Number(btn.dataset.dayIdx);
+        const targetIdx = Number(btn.dataset.dayIdx);
+        const delta = targetIdx === mobileSelectedDayIdx ? 0 : (targetIdx > mobileSelectedDayIdx ? 1 : -1);
+        mobileSelectedDayIdx = targetIdx;
         renderMobileAgenda();
+        if(delta){
+          mobileSlotListEl.classList.remove('slide-left','slide-right','slide-active');
+          mobileSlotListEl.classList.add(delta > 0 ? 'slide-left' : 'slide-right');
+          requestAnimationFrame(()=> requestAnimationFrame(()=> mobileSlotListEl.classList.add('slide-active')));
+          setTimeout(()=> mobileSlotListEl.classList.remove('slide-left','slide-right','slide-active'), 260);
+        }
       });
     });
 
     const d = DAYS[mobileSelectedDayIdx];
+    const fatigueSetMobile = fatigueFlaggedSlots(d);
+    const recoKeySetMobile = new Set(myRecommendations.map(r=>r.key));
     mobileSlotListEl.innerHTML = SLOTS.map(s=>{
       const isPeak = PEAK_SLOTS.includes(s.idx);
       const key = `${d}-${s.idx}`;
       const list = planning[key] || [];
       const isNow = ctx.inWindow && mobileSelectedDayIdx===ctx.dayIdx && s.idx===ctx.slotIdx;
       const isPeakEmpty = isPeak && !list.length;
+      const isRecoMobile = recoKeySetMobile.has(key) && !list.length;
 
       const rowClasses = ['prems-mobile-slot-row'];
       if(isPeak) rowClasses.push('peak-row');
       if(isNow) rowClasses.push('now-row');
+      const isNextSlot = mobileSelectedDayIdx===nextTarget.dayIdx && s.idx===nextTarget.slotIdx;
       if(isPeakEmpty) rowClasses.push('peak-empty-row');
+      if(isNextSlot && !list.length) rowClasses.push('is-empty-row');
+      if(isRecoMobile) rowClasses.push('reco-row');
 
       let content;
       if(list.length){
@@ -736,11 +1138,15 @@
           const grade = r ? r.grade : "";
           const c = colorFor(a.titulaire);
           const absentPill = absences[a.titulaire] ? `<span class="prems-absent-pill">absent</span>` : '';
+          const pLabel = partialLabel(s.idx, a.partial);
+          const partialPill = pLabel ? `<span class="prems-partial-pill" title="Disponible seulement ${pLabel}">⏱ ${pLabel}</span>` : '';
+          const isFatigued = fatigueSetMobile.has(s.idx+'|'+a.titulaire);
+          const fatiguePill = isFatigued ? `<span class="prems-fatigue-pill" title="Enchaîne plusieurs créneaux d'affilée (fatigue)">⚡ fatigue</span>` : '';
           const supplBit = a.suppleant ? `<span class="suppl">↳ suppl. ${a.suppleant}</span>` : '';
-          return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
+          return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
         }).join('');
       } else {
-        content = `<span class="prems-mobile-empty">${isPeakEmpty ? '⚠ vide — créneau 🔥' : 'Libre — toucher pour prendre'}</span>`;
+        content = `<span class="prems-mobile-empty">${isPeakEmpty ? '⚠ vide — créneau 🔥' : (isRecoMobile ? '💡 ton créneau habituel — toucher pour reprendre' : 'Libre — toucher pour prendre')}</span>`;
       }
 
       return `<div class="${rowClasses.join(' ')}" data-day="${d}" data-slot="${s.idx}">
@@ -750,7 +1156,13 @@
     }).join('');
 
     mobileSlotListEl.querySelectorAll('.prems-mobile-slot-row').forEach(row=>{
-      row.addEventListener('click', ()=> openSlotModal(row.dataset.day, Number(row.dataset.slot)));
+      row.addEventListener('click', ()=>{
+        // Retour visuel + haptique instantané, avant même l'ouverture de la modale.
+        row.classList.add('prems-tap-active');
+        vibrateLight(10);
+        setTimeout(()=> row.classList.remove('prems-tap-active'), 220);
+        openSlotModal(row.dataset.day, Number(row.dataset.slot));
+      });
     });
   }
 
@@ -920,6 +1332,7 @@
       setStatus("⚠️ Configuration manquante : ajoute ton URL Firebase dans le code (FIREBASE_URL).", "err");
       return;
     }
+    if(!firstLoadRendered) renderMobileSkeleton();
     try{
       try{
         const r = await fbGet('recruiters');
@@ -943,8 +1356,23 @@
         absences = a || {};
       }catch(e){ console.error(e); absences = {}; }
 
+      try{
+        const bd = await fbGet('blink_disabled');
+        blinkDisabled = !!bd;
+      }catch(e){ console.error(e); }
+      applyBlinkUI();
+
+      try{
+        const ft = await fbGet('fatigue_threshold');
+        fatigueThreshold = (typeof ft === 'number' && ft > 0) ? ft : 3;
+      }catch(e){ console.error(e); fatigueThreshold = 3; }
+      if(fatigueInputEl) fatigueInputEl.value = fatigueThreshold;
+
       renderAll();
+      firstLoadRendered = true;
       if(!silent) setStatus("Planning à jour — partagé avec toute la cellule recrutement.");
+      checkMyUpcomingSlotReminder();
+      computeRecommendationsFor(recruiterSelect.value);
     }catch(err){
       console.error(err);
       setStatus("Impossible de charger le planning. Réessaie dans un instant.", "err");
@@ -1007,6 +1435,110 @@
     }catch(e){ console.error('week history failed', e); }
   }
 
+  // --- Recommandations personnalisées basées sur les habitudes des semaines précédentes ---
+  // Si un(e) recruteur(trice) a occupé le même jour+créneau sur au moins
+  // RECO_MIN_OCCURRENCES des RECO_LOOKBACK_WEEKS dernières semaines connues
+  // (hors semaine en cours), on lui propose de reprendre ce créneau cette semaine,
+  // s'il est encore libre et qu'il/elle ne l'a pas déjà pris.
+  async function computeRecommendationsFor(name){
+    if(!name){ myRecommendations = []; recoComputedFor = null; renderRecoBanner(); return; }
+    const cacheKey = `${name}|${weekKey}`;
+    if(recoComputedFor === cacheKey){ renderRecoBanner(); return; }
+    let recos = [];
+    try{
+      const currentMonday = isoDate(monday);
+      const pastWeeks = weekHistory
+        .filter(h=> h.weekKey !== weekKey && h.monday < currentMonday)
+        .sort((a,b)=> b.monday.localeCompare(a.monday))
+        .slice(0, RECO_LOOKBACK_WEEKS);
+
+      const tally = {}; // "Jour-slotIdx" -> nb d'occurrences pour ce recruteur
+      for(const wk of pastWeeks){
+        let p = {};
+        try{ p = (await fbGet(`planning-${wk.weekKey}`)) || {}; }catch(e){ continue; }
+        Object.keys(p).forEach(key=>{
+          const list = p[key] || [];
+          if(list.some(a=>a.titulaire===name)) tally[key] = (tally[key]||0) + 1;
+        });
+      }
+
+      Object.keys(tally).forEach(key=>{
+        if(tally[key] < RECO_MIN_OCCURRENCES) return;
+        const alreadyTaken = (planning[key]||[]).length > 0; // par elle/lui ou par quelqu'un d'autre
+        if(alreadyTaken) return;
+        const sepIdx = key.lastIndexOf('-');
+        const day = key.slice(0, sepIdx);
+        const slotIdx = Number(key.slice(sepIdx+1));
+        recos.push({ day, slotIdx, key, count: tally[key] });
+      });
+      recos.sort((a,b)=> b.count - a.count);
+    }catch(e){
+      console.error('reco compute failed', e);
+      recos = [];
+    }
+    myRecommendations = recos;
+    recoComputedFor = cacheKey;
+    renderRecoBanner();
+  }
+
+  function renderRecoBanner(){
+    if(!recoBannerEl) return;
+    if(!myRecommendations.length){
+      recoBannerEl.style.display = 'none';
+      recoBannerEl.innerHTML = '';
+      renderTable(); // pour retirer les badges 💡 restants
+      return;
+    }
+    recoBannerEl.style.display = '';
+    recoBannerEl.innerHTML = `<span class="reco-icon">💡</span><div class="reco-list">` +
+      myRecommendations.map(r=>{
+        const label = SLOTS.find(s=>s.idx===r.slotIdx).label;
+        return `<span class="reco-item">Tu prends souvent <b>${r.day} ${label}</b> (${r.count} semaines de suite) — reprendre ce créneau cette semaine ?
+          <button class="prems-btn small" data-reco-key="${r.key}" data-reco-day="${r.day}" data-reco-slot="${r.slotIdx}">Prendre ce créneau</button></span>`;
+      }).join('') + `</div>`;
+    recoBannerEl.querySelectorAll('[data-reco-key]').forEach(btn=>{
+      btn.addEventListener('click', ()=> takeRecommendedSlot(btn.dataset.recoDay, Number(btn.dataset.recoSlot)));
+    });
+    renderTable(); // pour afficher les badges 💡 sur les cases recommandées
+  }
+
+  function takeRecommendedSlot(day, slotIdx){
+    const me = recruiterSelect.value;
+    if(!me) return;
+    const key = `${day}-${slotIdx}`;
+    const list = planning[key] || [];
+    if(list.length){
+      setStatus("Ce créneau vient d'être pris par quelqu'un d'autre.", "err");
+      myRecommendations = myRecommendations.filter(r=> r.key !== key);
+      renderRecoBanner();
+      return;
+    }
+    if(countSameSlotDays(me, slotIdx, null) >= MAX_SAME_SLOT_PER_WEEK){
+      setStatus(`Tu as déjà pris la tranche ${SLOTS.find(s=>s.idx===slotIdx).label} sur ${MAX_SAME_SLOT_PER_WEEK} jours différents cette semaine.`, "err");
+      return;
+    }
+    const projectedRun = maxConsecutiveForName(day, me, slotIdx);
+    if(projectedRun > fatigueThreshold){
+      setStatus(`⛔ Créneau bloqué : tu enchaînerais ${projectedRun} créneaux d'affilée le ${day} (soit ${projectedRun*2}h), au-delà du seuil autorisé (${fatigueThreshold}).`, "err");
+      return;
+    }
+    planning[key] = [{ titulaire: me, suppleant: null, partial: null }];
+    myRecommendations = myRecommendations.filter(r=> r.key !== key);
+    renderTable();
+    updateLiveIndicator();
+    renderRecoBanner();
+    savePlanning();
+  }
+
+  // Retire du bandeau de recommandations les créneaux qui viennent d'être pris
+  // (par la personne elle-même ou par quelqu'un d'autre), pour rester cohérent.
+  function syncRecoAfterChange(){
+    if(!myRecommendations.length) return;
+    const before = myRecommendations.length;
+    myRecommendations = myRecommendations.filter(r=> !(planning[r.key]||[]).length);
+    if(myRecommendations.length !== before) renderRecoBanner();
+  }
+
   // --- Modal de créneau ---
   function closeModal(){ modalLayer.innerHTML = ""; }
 
@@ -1020,8 +1552,13 @@
     const myAssignment = list.find(a=>a.titulaire===me);
     const mySuppleantOf = list.find(a=>a.suppleant===me);
 
+    const halves = halfLabels(slotIdx);
+
     let occLines = list.length
-      ? list.map(a=>`${a.titulaire}${a.suppleant ? ` — suppléant : ${a.suppleant}` : ''}`).join('<br>')
+      ? list.map(a=>{
+          const pLabel = partialLabel(slotIdx, a.partial);
+          return `${a.titulaire}${pLabel ? ` (⏱ ${pLabel} seulement)` : ''}${a.suppleant ? ` — suppléant : ${a.suppleant}` : ''}`;
+        }).join('<br>')
       : "Personne pour l'instant sur ce créneau.";
 
     let actionsHtml = "";
@@ -1029,6 +1566,16 @@
     const slotTaken = list.length > 0;
 
     if(myAssignment){
+      actionsHtml += `
+        <label class="prems-hint" style="display:flex; align-items:center; gap:6px; margin:2px 0 2px;">
+          <input type="checkbox" id="prems-partial-toggle" ${myAssignment.partial ? 'checked' : ''}> Je ne suis dispo qu'une heure sur ce créneau
+        </label>
+        <select class="prems-select" id="prems-partial-half" style="width:100%; margin-bottom:6px; ${myAssignment.partial ? '' : 'display:none;'}">
+          <option value="first" ${myAssignment.partial==='first' ? 'selected' : ''}>${halves.first}</option>
+          <option value="second" ${myAssignment.partial==='second' ? 'selected' : ''}>${halves.second}</option>
+        </select>
+        <button class="prems-btn ghost small" data-action="update-partial">Mettre à jour la disponibilité</button>
+      `;
       actionsHtml += `<button class="prems-btn" data-action="remove-mine">Me retirer de ce créneau</button>`;
       actionsHtml += `<button class="prems-btn ghost" data-action="propose-swap">🔄 Proposer un échange</button>`;
     } else if(mySuppleantOf){
@@ -1045,9 +1592,26 @@
       }
     } else {
       const canTake = countSameSlotDays(me, slotIdx, null) < MAX_SAME_SLOT_PER_WEEK;
-      actionsHtml += `<button class="prems-btn" data-action="take" ${canTake ? '' : 'disabled title="Déjà 3 jours différents sur cette tranche horaire cette semaine"'}>Prendre ce créneau (titulaire)</button>`;
+      const projectedRun = maxConsecutiveForName(day, me, slotIdx);
+      const fatigueBlocked = projectedRun > fatigueThreshold;
+      actionsHtml += `
+        <label class="prems-hint" style="display:flex; align-items:center; gap:6px; margin:2px 0 2px;">
+          <input type="checkbox" id="prems-partial-toggle"> Je ne suis dispo qu'une heure sur ce créneau
+        </label>
+        <select class="prems-select" id="prems-partial-half" style="width:100%; margin-bottom:6px; display:none;">
+          <option value="first">${halves.first}</option>
+          <option value="second">${halves.second}</option>
+        </select>
+      `;
+      const takeDisabled = !canTake || fatigueBlocked;
+      const disabledTitle = !canTake
+        ? 'Déjà 3 jours différents sur cette tranche horaire cette semaine'
+        : (fatigueBlocked ? `Bloqué : ${projectedRun} créneaux d'affilée, au-delà du seuil autorisé (${fatigueThreshold})` : '');
+      actionsHtml += `<button class="prems-btn" data-action="take" ${takeDisabled ? `disabled title="${disabledTitle}"` : ''}>Prendre ce créneau (titulaire)</button>`;
       if(!canTake){
         actionsHtml += `<p class="prems-hint">Tu as déjà pris cette tranche (${slotLabel}) sur 3 jours différents cette semaine.</p>`;
+      } else if(fatigueBlocked){
+        actionsHtml += `<p class="prems-hint">⛔ Créneau bloqué : avec celui-ci, tu enchaînerais ${projectedRun} créneaux d'affilée le ${day} (soit ${projectedRun*2}h), au-delà du seuil autorisé par l'administrateur (${fatigueThreshold}).</p>`;
       }
     }
 
@@ -1057,6 +1621,17 @@
         actionsHtml += `<button class="prems-btn ghost" data-action="admin-remove-titulaire" data-name="${a.titulaire}">Retirer ${a.titulaire} (admin)</button>`;
         if(a.suppleant){
           actionsHtml += `<button class="prems-btn ghost" data-action="admin-remove-suppleant" data-name="${a.titulaire}">Retirer le suppléant de ${a.titulaire} (admin)</button>`;
+        } else {
+          const supplCandidates = recruiters.filter(r=> r.name!==a.titulaire);
+          if(supplCandidates.length){
+            actionsHtml += `
+              <div style="display:flex; gap:6px; margin-top:2px;">
+                <select class="prems-select" data-suppl-for="${a.titulaire}" style="flex:1;">
+                  ${supplCandidates.map(r=>`<option value="${r.name}">${r.name} (${r.grade})${absences[r.name] ? ' — absent' : ''}</option>`).join('')}
+                </select>
+                <button class="prems-btn ghost" data-action="admin-assign-suppleant" data-for="${a.titulaire}">Désigner suppléant(e) de ${a.titulaire} (admin)</button>
+              </div>`;
+          }
         }
       });
       const assignable = recruiters.filter(r=> !list.some(a=>a.titulaire===r.name));
@@ -1087,6 +1662,14 @@
       if(e.target.id === 'prems-modal-backdrop') closeModal();
     });
 
+    const partialToggleEl = document.getElementById('prems-partial-toggle');
+    const partialHalfEl = document.getElementById('prems-partial-half');
+    if(partialToggleEl && partialHalfEl){
+      partialToggleEl.addEventListener('change', ()=>{
+        partialHalfEl.style.display = partialToggleEl.checked ? '' : 'none';
+      });
+    }
+
     modalLayer.querySelectorAll('[data-action]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const action = btn.dataset.action;
@@ -1102,9 +1685,20 @@
           finishSlotAction();
         } else if(action === 'take'){
           if(countSameSlotDays(me, slotIdx, null) >= MAX_SAME_SLOT_PER_WEEK) return;
+          const projectedRun = maxConsecutiveForName(day, me, slotIdx);
+          if(projectedRun > fatigueThreshold){
+            // Bloqué : au-delà du seuil de créneaux d'affilée réglé par l'administrateur, impossible de poser.
+            setStatus(`⛔ Créneau bloqué : tu enchaînerais ${projectedRun} créneaux d'affilée le ${day} (soit ${projectedRun*2}h), au-delà du seuil autorisé (${fatigueThreshold}).`, "err");
+            return;
+          }
+          const partial = (partialToggleEl && partialToggleEl.checked) ? partialHalfEl.value : null;
           const newList = list.slice();
-          newList.push({ titulaire: me, suppleant: null });
+          newList.push({ titulaire: me, suppleant: null, partial });
           planning[key] = newList;
+          finishSlotAction();
+        } else if(action === 'update-partial'){
+          const a = list.find(a=>a.titulaire===me);
+          if(a) a.partial = (partialToggleEl && partialToggleEl.checked) ? partialHalfEl.value : null;
           finishSlotAction();
         } else if(action === 'suppleant'){
           const of = btn.dataset.of;
@@ -1130,6 +1724,11 @@
           const sel = document.getElementById('prems-admin-assign-select');
           const targetName = sel ? sel.value : null;
           if(!targetName || list.some(a=>a.titulaire===targetName)){ closeModal(); return; }
+          const projectedRunAdmin = maxConsecutiveForName(day, targetName, slotIdx);
+          if(projectedRunAdmin > fatigueThreshold){
+            setStatus(`⛔ Assignation bloquée : ${targetName} enchaînerait ${projectedRunAdmin} créneaux d'affilée le ${day} (soit ${projectedRunAdmin*2}h), au-delà du seuil autorisé (${fatigueThreshold}).`, "err");
+            return;
+          }
           if(countSameSlotDays(targetName, slotIdx, null) >= MAX_SAME_SLOT_PER_WEEK){
             if(!window.confirm(`${targetName} a déjà pris la tranche ${slotLabel} sur 3 jours différents cette semaine. Assigner quand même ?`)) return;
           }
@@ -1137,6 +1736,17 @@
           newList.push({ titulaire: targetName, suppleant: null });
           planning[key] = newList;
           logAdminAction("a assigné quelqu'un à un créneau", `${targetName} — ${day} ${slotLabel}`);
+          finishSlotAction();
+        } else if(action === 'admin-assign-suppleant'){
+          if(!isAdmin) return;
+          const forName = btn.dataset.for;
+          const sel = modalLayer.querySelector(`[data-suppl-for="${forName}"]`);
+          const supplName = sel ? sel.value : null;
+          if(!supplName) { closeModal(); return; }
+          const a = list.find(a=>a.titulaire===forName);
+          if(!a || a.suppleant){ closeModal(); return; }
+          a.suppleant = supplName;
+          logAdminAction("a désigné un(e) suppléant(e)", `${supplName} — suppléant de ${forName} — ${day} ${slotLabel}`);
           finishSlotAction();
         }
       });
@@ -1147,6 +1757,7 @@
     closeModal();
     renderTable();
     updateLiveIndicator();
+    syncRecoAfterChange();
     savePlanning();
   }
 
@@ -1556,6 +2167,39 @@
     modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
   });
 
+  blinkToggleBtn.addEventListener('click', async ()=>{
+    if(!isAdmin) return;
+    const newValue = !blinkDisabled;
+    try{
+      await fbSet('blink_disabled', newValue);
+    }catch(e){
+      console.error(e);
+      setStatus("Échec de l'enregistrement du réglage de clignotement.", "err");
+      return;
+    }
+    blinkDisabled = newValue;
+    applyBlinkUI();
+    logAdminAction(blinkDisabled ? "a désactivé le clignotement des créneaux vides" : "a réactivé le clignotement des créneaux vides");
+    setStatus(blinkDisabled ? "Clignotement désactivé pour tout le monde." : "Clignotement réactivé pour tout le monde.", "ok");
+  });
+
+  fatigueSaveBtn.addEventListener('click', async ()=>{
+    if(!isAdmin) return;
+    const val = parseInt(fatigueInputEl.value, 10);
+    if(!val || val < 1){ setStatus("Entre un seuil valide (nombre de créneaux d'affilée).", "err"); return; }
+    try{
+      await fbSet('fatigue_threshold', val);
+    }catch(e){
+      console.error(e);
+      setStatus("Échec de l'enregistrement du seuil de fatigue.", "err");
+      return;
+    }
+    fatigueThreshold = val;
+    renderAll();
+    logAdminAction("a modifié le seuil d'alerte fatigue", `${val} créneaux d'affilée (${val*2}h)`);
+    setStatus(`Seuil de fatigue mis à jour : ${val} créneaux d'affilée (${val*2}h) — au-delà, la prise du créneau est bloquée.`, "ok");
+  });
+
   function buildPlanningText(){
     const lines = [`Planning recrutement — semaine du ${fmtDate(monday)} au ${fmtDate(sunday)}`, ''];
     DAYS.forEach(d=>{
@@ -1565,7 +2209,10 @@
         const list = planning[`${d}-${s.idx}`] || [];
         if(list.length){
           any = true;
-          lines.push(`  ${s.label} — ` + list.map(a=>a.titulaire + (a.suppleant ? ` (suppl. ${a.suppleant})` : '')).join(', '));
+          lines.push(`  ${s.label} — ` + list.map(a=>{
+            const pLabel = partialLabel(s.idx, a.partial);
+            return a.titulaire + (pLabel ? ` (${pLabel} seulement)` : '') + (a.suppleant ? ` (suppl. ${a.suppleant})` : '');
+          }).join(', '));
         }
       });
       if(!any) lines.push('  (aucun créneau pris)');
@@ -1672,10 +2319,15 @@
     });
     renderTable();
     updateLiveIndicator();
+    computeRecommendationsFor(me);
     savePlanning();
   });
 
-  recruiterSelect.addEventListener('change', syncAbsentToggle);
+  recruiterSelect.addEventListener('change', ()=>{
+    syncAbsentToggle();
+    checkMyUpcomingSlotReminder();
+    computeRecommendationsFor(recruiterSelect.value);
+  });
 
   absentToggle.addEventListener('change', ()=>{
     const me = recruiterSelect.value;
@@ -1692,5 +2344,7 @@
   setInterval(()=>{ renderTable(); updateLiveIndicator(); }, 60000);
   // Recharge les données partagées toutes les 15s pour voir les changements des collègues
   setInterval(()=>{ loadAll(true); }, 15000);
+  // Vérifie toutes les 20s si le créneau de l'utilisateur approche (rappel personnel)
+  setInterval(checkMyUpcomingSlotReminder, 20000);
 })();
 </script>
