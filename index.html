@@ -179,6 +179,24 @@
   .prems-fatigue-pill{ font-size:9.5px; color:var(--accent); border:1px solid #e2574c55; border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; font-weight:700; }
   .prems-oral-pill{ font-size:9.5px; color:#4ea8de; border:1px solid #4ea8de55; border-radius:4px; padding:0 4px; margin-left:4px; white-space:nowrap; font-weight:700; }
 
+  /* --- Mode animation : une puce qui vient d'apparaître "pop" à l'écran,
+     et sa case flashe brièvement pour attirer l'œil (voir aussi le FLIP en JS
+     qui fait glisser les puces voisines au lieu de sauter). --- */
+  @keyframes premsChipEnter{
+    0%   { opacity:0; transform:scale(.5) translateY(6px); }
+    55%  { opacity:1; transform:scale(1.1) translateY(-2px); }
+    100% { opacity:1; transform:scale(1) translateY(0); }
+  }
+  .prems-chip-enter{ animation: premsChipEnter .4s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes premsCellFlash{
+    0%   { box-shadow: inset 0 0 0 2px #4ea8de00, inset 0 0 16px #4ea8de00; }
+    25%  { box-shadow: inset 0 0 0 2px #4ea8de88, inset 0 0 16px #4ea8de33; }
+    100% { box-shadow: inset 0 0 0 2px #4ea8de00, inset 0 0 16px #4ea8de00; }
+  }
+  td.slot.prems-cell-flash{ animation: premsCellFlash .7s ease; }
+  .prems-mobile-slot-row.prems-cell-flash{ animation: premsCellFlash .7s ease; }
+
+
   /* --- Bannière de recommandations personnalisées (habitudes détectées sur plusieurs semaines) --- */
   .prems-reco-banner{
     display:flex; align-items:flex-start; gap:10px;
@@ -276,7 +294,7 @@
     display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text);
     background:var(--panel-2); border:1px solid var(--border); padding:5px 10px; border-radius:20px;
   }
-  .prems-legend .swatch{ width:9px; height:9px; border-radius:50%; }
+  .prems-legend .swatch{ width:9px; height:9px; border-radius:50%; border:1px solid rgba(127,127,127,.45); }
   .prems-legend .remove{ color:var(--muted); cursor:pointer; margin-left:2px; }
   .prems-legend .remove:hover{ color:var(--accent); }
   .prems-legend .edit{ color:var(--muted); cursor:pointer; margin-left:2px; }
@@ -515,6 +533,7 @@
       <button class="prems-btn ghost small" id="prems-admin-auto-week" style="display:none;">↺ Revenir à la semaine automatique</button>
       <button class="prems-btn ghost small" id="prems-admin-missing">📣 Qui n'a rien pris ?</button>
       <button class="prems-btn ghost small" id="prems-admin-recap">📊 Récap créneaux</button>
+      <button class="prems-btn ghost small" id="prems-admin-oral-stats">🎤 Entretiens oraux</button>
       <button class="prems-btn ghost small" id="prems-admin-history">🗂️ Historique des semaines</button>
       <button class="prems-btn ghost small" id="prems-admin-log">🧾 Journal admin</button>
       <button class="prems-btn ghost small" id="prems-admin-blink-toggle">🔕 Désactiver le clignotement des créneaux vides</button>
@@ -592,6 +611,9 @@
   const PEAK_SLOTS = [3,4]; // 18h–20h, 20h–22h
   const GRADE_LABEL = { MF:"Médecin Formateur", RF:"Responsable Formateur", MC:"Médecin-Chef", ADD:"Assistant de Direction", CD:"Co-directeur", DIR:"Directeur" };
   const PALETTE = ["#e2574c","#4ea8de","#8bc46a","#f2a541","#c792ea","#5fd4c0","#f06fa0","#a3b18a","#e8c547","#7aa5d2"];
+  // Couleur par grade (au lieu d'une couleur par personne) :
+  // MF et RF en blanc, MC en gris, ADD en rose clair, CD et DIR en rouge.
+  const GRADE_COLOR = { MF:"#f5f5f5", RF:"#ffffff", MC:"#9e9e9e", ADD:"#ffb6c1", CD:"#e2574c", DIR:"#e2574c" };
 
   // Mot de passe partagé pour le mode administrateur.
   // Change cette valeur pour définir ton propre mot de passe d'équipe,
@@ -731,10 +753,8 @@
     statusEl.className = "prems-status" + (kind ? " " + kind : "");
   }
 
-  function colorFor(name){
-    let h = 0;
-    for(let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) >>> 0;
-    return PALETTE[h % PALETTE.length];
+  function colorFor(grade){
+    return GRADE_COLOR[grade] || PALETTE[0];
   }
 
   // --- Semaine courante (lundi -> dimanche), clé stable pour le stockage ---
@@ -998,8 +1018,53 @@
     return count;
   }
 
+  // --- Nombre total de créneaux (titulaire) pris par quelqu'un cette semaine,
+  // utilisé pour la règle de priorité : entre deux formateurs qui veulent le
+  // même créneau, celui qui en a déjà le moins est prioritaire. ---
+  function countTotalSlotsForName(name){
+    let count = 0;
+    Object.keys(planning).forEach(k=>{
+      if((planning[k]||[]).some(a=>a.titulaire===name)) count++;
+    });
+    return count;
+  }
+
   // --- Rendu de la grille ---
+
+  // Mode animation : quand un créneau se remplit (par moi ou par quelqu'un
+  // d'autre via la synchro), la puce apparaît en douceur, les puces voisines
+  // glissent (FLIP) au lieu de sauter directement, et un petit son joue.
+  let tableAnimReady = false; // false le temps du tout premier rendu (pas d'anim au chargement)
+  function captureChipRects(){
+    const map = new Map();
+    table.querySelectorAll('.slot-chip[data-key]').forEach(el=>{
+      map.set(el.dataset.key, el.getBoundingClientRect());
+    });
+    return map;
+  }
+  function playTakeSound(){
+    try{
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if(!AudioCtx) return;
+      const ctxAudio = new AudioCtx();
+      const osc = ctxAudio.createOscillator();
+      const gain = ctxAudio.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(560, ctxAudio.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(960, ctxAudio.currentTime + 0.11);
+      gain.gain.setValueAtTime(0.0001, ctxAudio.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.15, ctxAudio.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctxAudio.currentTime + 0.3);
+      osc.connect(gain); gain.connect(ctxAudio.destination);
+      osc.start();
+      osc.stop(ctxAudio.currentTime + 0.32);
+    }catch(e){}
+  }
+
   function renderTable(){
+    const beforeRects = captureChipRects();
+    const beforeKeySet = new Set(beforeRects.keys());
+
     let thead = `<thead><tr><th class="time-col mono">Créneau</th>`;
     DAYS.forEach((d,i)=>{
       thead += `<th class="${i===rawTodayIdx ? 'today' : ''}">${d}${i===rawTodayIdx ? ' •' : ''}</th>`;
@@ -1029,7 +1094,7 @@
           content = `<div class="slot-stack">` + list.map(a=>{
             const r = recruiters.find(r=>r.name===a.titulaire);
             const grade = r ? r.grade : "";
-            const c = colorFor(a.titulaire);
+            const c = colorFor(grade);
             const absentPill = absences[a.titulaire] ? `<span class="prems-absent-pill">absent</span>` : '';
             const pLabel = partialLabel(s.idx, a.partial);
             const partialPill = pLabel ? `<span class="prems-partial-pill" title="Disponible seulement ${pLabel}">⏱ ${pLabel}</span>` : '';
@@ -1037,7 +1102,7 @@
             const fatiguePill = isFatigued ? `<span class="prems-fatigue-pill" title="Enchaîne plusieurs créneaux d'affilée (fatigue)">⚡ fatigue</span>` : '';
             const oralPill = a.oral ? `<span class="prems-oral-pill" title="Entretien oral prévu sur ce créneau">🎤 Entretien oral prévue</span>` : '';
             const supplBit = a.suppleant ? `<span class="suppl">↳ suppl. ${a.suppleant}</span>` : '';
-            return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}${oralPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
+            return `<span class="slot-chip" data-key="${key}|${a.titulaire}" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}${oralPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
           }).join('') + `</div>`;
         } else {
           content = `<span class="prems-empty-cell">${isPeakEmpty ? '⚠ vide' : (isReco ? '💡' : '+')}</span>`;
@@ -1056,7 +1121,39 @@
       td.addEventListener('click', ()=> openSlotModal(td.dataset.day, Number(td.dataset.slot)));
     });
 
-    renderMobileAgenda();
+    if(tableAnimReady && !root.classList.contains('prems-exporting')){
+      let anyNew = false;
+      table.querySelectorAll('.slot-chip[data-key]').forEach(el=>{
+        const k = el.dataset.key;
+        if(beforeKeySet.has(k)){
+          // Puce déjà là avant : si sa position a bougé (une voisine est apparue
+          // ou a disparu), on la fait glisser en douceur au lieu de sauter (FLIP).
+          const oldRect = beforeRects.get(k);
+          const newRect = el.getBoundingClientRect();
+          const dx = oldRect.left - newRect.left;
+          const dy = oldRect.top - newRect.top;
+          if(Math.abs(dx) > 1 || Math.abs(dy) > 1){
+            el.style.transition = 'none';
+            el.style.transform = `translate(${dx}px, ${dy}px)`;
+            requestAnimationFrame(()=>{
+              el.style.transition = 'transform .28s cubic-bezier(.22,.8,.32,1)';
+              el.style.transform = '';
+            });
+          }
+        } else {
+          // Puce toute neuve : elle apparaît avec une petite animation d'entrée,
+          // et sa case flashe brièvement pour attirer l'œil.
+          anyNew = true;
+          el.classList.add('prems-chip-enter');
+          const cell = el.closest('td.slot');
+          if(cell) cell.classList.add('prems-cell-flash');
+        }
+      });
+      if(anyNew) playTakeSound();
+    }
+    tableAnimReady = true;
+
+    renderMobileAgenda(true);
   }
 
   // --- Vue mobile : agenda liste par jour (un jour à la fois, plus confortable au doigt) ---
@@ -1141,9 +1238,10 @@
       </div>`).join('');
   }
 
-  function renderMobileAgenda(){
+  function renderMobileAgenda(animate){
     const ctx = getNowContext();
     const nextTarget = getNextSlotTarget();
+    const beforeKeySetMobile = animate ? new Set(Array.from(mobileSlotListEl.querySelectorAll('.slot-chip[data-key]')).map(el=>el.dataset.key)) : null;
 
     mobileDayTabsEl.innerHTML = DAYS.map((d,i)=>{
       const classes = ['prems-mobile-daytab'];
@@ -1190,7 +1288,7 @@
         content = list.map(a=>{
           const r = recruiters.find(r=>r.name===a.titulaire);
           const grade = r ? r.grade : "";
-          const c = colorFor(a.titulaire);
+          const c = colorFor(grade);
           const absentPill = absences[a.titulaire] ? `<span class="prems-absent-pill">absent</span>` : '';
           const pLabel = partialLabel(s.idx, a.partial);
           const partialPill = pLabel ? `<span class="prems-partial-pill" title="Disponible seulement ${pLabel}">⏱ ${pLabel}</span>` : '';
@@ -1198,7 +1296,7 @@
           const fatiguePill = isFatigued ? `<span class="prems-fatigue-pill" title="Enchaîne plusieurs créneaux d'affilée (fatigue)">⚡ fatigue</span>` : '';
           const oralPill = a.oral ? `<span class="prems-oral-pill" title="Entretien oral prévu sur ce créneau">🎤 Entretien oral prévue</span>` : '';
           const supplBit = a.suppleant ? `<span class="suppl">↳ suppl. ${a.suppleant}</span>` : '';
-          return `<span class="slot-chip" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}${oralPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
+          return `<span class="slot-chip" data-key="${key}|${a.titulaire}" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}${oralPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
         }).join('');
       } else {
         content = `<span class="prems-mobile-empty">${isPeakEmpty ? '⚠ vide — créneau 🔥' : (isRecoMobile ? '💡 ton créneau habituel — toucher pour reprendre' : 'Libre — toucher pour prendre')}</span>`;
@@ -1209,6 +1307,16 @@
         <div class="prems-mobile-slot-content">${content}</div>
       </div>`;
     }).join('');
+
+    if(animate && beforeKeySetMobile && !root.classList.contains('prems-exporting')){
+      mobileSlotListEl.querySelectorAll('.slot-chip[data-key]').forEach(el=>{
+        if(!beforeKeySetMobile.has(el.dataset.key)){
+          el.classList.add('prems-chip-enter');
+          const row = el.closest('.prems-mobile-slot-row');
+          if(row) row.classList.add('prems-cell-flash');
+        }
+      });
+    }
 
     mobileSlotListEl.querySelectorAll('.prems-mobile-slot-row').forEach(row=>{
       row.addEventListener('click', ()=>{
@@ -1238,7 +1346,7 @@
 
   function renderLegend(){
     legendEl.innerHTML = recruiters.map(r=>{
-      const c = colorFor(r.name);
+      const c = colorFor(r.grade);
       const absentBit = absences[r.name] ? `<span class="prems-absent-pill">absent</span>` : '';
       const adminBtns = isAdmin
         ? `<span class="abs-toggle" data-abs-toggle="${r.name}" title="${absences[r.name] ? 'Retirer absence' : 'Marquer absent(e)'}">${absences[r.name] ? '✓' : '🚫'}</span><span class="edit" data-edit="${r.name}" title="Modifier ce recruteur">✎</span><span class="remove" data-remove="${r.name}" title="Retirer ce recruteur">✕</span>`
@@ -1639,10 +1747,18 @@
     } else if(absences[me]){
       actionsHtml += `<p class="prems-hint">Tu es marqué(e) absent(e) cette semaine — décoche « Absent(e) » pour pouvoir prendre un créneau.</p>`;
     } else if(slotTaken){
-      // Créneau déjà pris par quelqu'un d'autre : uniquement suppléant possible, sinon rien.
+      // Créneau déjà pris par quelqu'un d'autre : suppléant possible, ou
+      // priorité si je suis moins chargé(e) que le/la titulaire actuel(le).
       const availableTitulaire = list.find(a=>!a.suppleant);
       if(availableTitulaire){
+        const myTotal = countTotalSlotsForName(me);
+        const theirTotal = countTotalSlotsForName(availableTitulaire.titulaire);
         actionsHtml += `<button class="prems-btn ghost" data-action="suppleant" data-of="${availableTitulaire.titulaire}">Me mettre suppléant de ${availableTitulaire.titulaire}</button>`;
+        if(myTotal < theirTotal){
+          actionsHtml += `<button class="prems-btn" data-action="priority-claim" data-of="${availableTitulaire.titulaire}">⚖️ Demander la priorité (toi : ${myTotal} créneau${myTotal>1?'x':''} vs ${availableTitulaire.titulaire} : ${theirTotal})</button>`;
+        } else {
+          actionsHtml += `<p class="prems-hint">⚖️ Pas de priorité possible ici : ${availableTitulaire.titulaire} a ${theirTotal} créneau${theirTotal>1?'x':''} cette semaine, toi ${myTotal} — la priorité va à qui en a le moins.</p>`;
+        }
       } else {
         actionsHtml += `<p class="prems-hint">Ce créneau est déjà pris et a déjà un(e) suppléant(e) — rien à faire ici.</p>`;
       }
@@ -1764,6 +1880,30 @@
           const of = btn.dataset.of;
           const a = list.find(a=>a.titulaire===of);
           if(a && !a.suppleant) a.suppleant = me;
+          finishSlotAction();
+        } else if(action === 'priority-claim'){
+          const of = btn.dataset.of;
+          const target = list.find(a=>a.titulaire===of);
+          if(!target || target.suppleant){ closeModal(); return; }
+          const myTotal = countTotalSlotsForName(me);
+          const theirTotal = countTotalSlotsForName(of);
+          if(myTotal >= theirTotal){
+            setStatus("La priorité a changé entre-temps : tu n'as plus moins de créneaux qu'eux.", "err");
+            closeModal();
+            return;
+          }
+          if(countSameSlotDays(me, slotIdx, null) >= MAX_SAME_SLOT_PER_WEEK){
+            setStatus(`Tu as déjà pris cette tranche (${slotLabel}) sur 3 jours différents cette semaine.`, "err");
+            return;
+          }
+          const projectedRun = maxConsecutiveForName(day, me, slotIdx);
+          if(projectedRun > fatigueThreshold){
+            setStatus(`⛔ Créneau bloqué : tu enchaînerais ${projectedRun} créneaux d'affilée le ${day} (soit ${projectedRun*2}h), au-delà du seuil autorisé (${fatigueThreshold}).`, "err");
+            return;
+          }
+          if(!window.confirm(`Prendre la priorité sur ce créneau à la place de ${of} (qui a plus de créneaux que toi cette semaine — ${theirTotal} vs ${myTotal}) ?`)) return;
+          planning[key] = list.map(a=> a.titulaire===of ? { titulaire: me, suppleant: null, partial: null, oral: false } : a);
+          setStatus(`Tu as pris la priorité sur ce créneau à la place de ${of} (moins de créneaux que lui/elle cette semaine).`, "ok");
           finishSlotAction();
         } else if(action === 'admin-remove-titulaire'){
           if(!isAdmin) return;
@@ -2058,6 +2198,51 @@
             <table class="prems-recap-table">
               <thead><tr><th>Nom</th><th>Grade</th><th>Titulaire</th><th>Suppléant</th><th>Total</th><th></th></tr></thead>
               <tbody>${rows || '<tr><td colspan="6">Aucun recruteur.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div class="actions" style="margin-top:12px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+  });
+
+  // --- Stat admin : entretiens oraux prévus, par tranche horaire, pour la semaine ---
+  function computeOralStatsByHour(){
+    const byHour = SLOTS.map(s=>({ idx:s.idx, label:s.label, count:0 }));
+    let total = 0;
+    DAYS.forEach(d=>{
+      SLOTS.forEach(s=>{
+        const list = planning[`${d}-${s.idx}`] || [];
+        const n = list.filter(a=>a.oral).length;
+        if(n){
+          byHour.find(h=>h.idx===s.idx).count += n;
+          total += n;
+        }
+      });
+    });
+    return { byHour, total };
+  }
+
+  document.getElementById('prems-admin-oral-stats').addEventListener('click', ()=>{
+    if(!isAdmin) return;
+    const { byHour, total } = computeOralStatsByHour();
+    const maxCount = Math.max(1, ...byHour.map(h=>h.count));
+    const rows = byHour.map(h=>`
+      <tr class="${h.count===0 ? 'zero' : ''}">
+        <td>${h.label}</td>
+        <td><strong>${h.count}</strong></td>
+        <td style="width:110px;"><div class="prems-recap-bar-wrap"><div class="prems-recap-bar" style="width:${(h.count/maxCount*100).toFixed(0)}%;"></div></div></td>
+      </tr>`).join('');
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:480px;">
+          <h3>🎤 Entretiens oraux prévus</h3>
+          <p class="sub">Créneaux marqués « Entretien oral prévue » par tranche horaire — semaine du ${fmtDate(monday)} au ${fmtDate(sunday)}. Total : <strong>${total}</strong>.</p>
+          <div style="max-height:340px; overflow:auto;">
+            <table class="prems-recap-table">
+              <thead><tr><th>Tranche horaire</th><th>Entretiens</th><th></th></tr></thead>
+              <tbody>${rows}</tbody>
             </table>
           </div>
           <div class="actions" style="margin-top:12px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
