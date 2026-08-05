@@ -111,6 +111,18 @@
   .prems-btn.small{ padding:6px 10px; font-size:12px; }
   .prems-hint{ font-size:12px; color:var(--muted); }
 
+  /* Badge de notification (ex: demandes d'échange reçues en attente) */
+  .prems-btn-with-badge{ position:relative; overflow:visible; }
+  .prems-notif-badge{
+    position:absolute; top:-7px; right:-7px;
+    min-width:17px; height:17px; padding:0 4px;
+    border-radius:999px; background:var(--accent); color:#fff;
+    font-size:10.5px; font-weight:700; line-height:17px; text-align:center;
+    box-shadow:0 0 0 2px var(--panel);
+    animation: premsBadgePop .3s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  @keyframes premsBadgePop{ from{ transform:scale(0); } to{ transform:scale(1); } }
+
   .prems-absent-toggle{
     display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted);
     background:var(--panel-2); border:1px solid var(--border); border-radius:7px; padding:7px 10px;
@@ -339,6 +351,16 @@
     font-size:12.5px; background:var(--panel-2);
   }
   .prems-swap-item .row{ display:flex; gap:6px; margin-top:6px; }
+  .prems-swap-item-new{ border-color:var(--accent); box-shadow:0 0 0 1px var(--accent-dim); }
+
+  /* Chip de la légende correspondant à la personne actuellement sélectionnée */
+  .prems-legend .chip.is-me{
+    background:var(--accent-dim); border:1px solid var(--accent); border-radius:6px; padding:2px 6px;
+  }
+
+  /* Entrées du journal admin apparues depuis la dernière consultation */
+  .prems-log-entry{ padding:2px 0; }
+  .prems-log-entry-new{ border-left:2px solid var(--accent); padding-left:6px; margin-left:-8px; background:var(--accent-dim); border-radius:0 4px 4px 0; }
 
   @media print{
     /* Toujours imprimer le tableau semaine complet, jamais la vue mobile
@@ -477,14 +499,7 @@
     <div class="prems-add-form">
       <span class="label">Nouveau recruteur :</span>
       <input class="prems-input" id="prems-new-name" placeholder="Nom" style="width:140px;">
-      <select class="prems-select" id="prems-new-grade">
-        <option value="MF" selected>Médecin Formateur (MF)</option>
-        <option value="RF">Responsable Formateur (RF)</option>
-        <option value="MC">Médecin-Chef (MC)</option>
-        <option value="ADD">Assistant de Direction (ADD)</option>
-        <option value="CD">Co-directeur (CD)</option>
-        <option value="DIR">Directeur (Dir.)</option>
-      </select>
+      <select class="prems-select" id="prems-new-grade"><!-- options générées dynamiquement, cf. renderGradeSelectOptions() --></select>
       <button class="prems-btn" id="prems-add-btn">+ Ajouter</button>
       <span class="prems-hint" id="prems-add-hint"></span>
     </div>
@@ -507,9 +522,9 @@
           <input type="checkbox" id="prems-reminder-sound">
           🔊 son
         </label>
-        <button class="prems-btn ghost small prems-mobile-secondary" id="prems-fav-save" title="Sauvegarder mes créneaux actuels comme favoris">⭐ Sauver mes favoris</button>
+        <button class="prems-btn ghost small prems-mobile-secondary" id="prems-fav-save" title="Choisir jusqu'à 2 créneaux à sauvegarder comme favoris">⭐ Sauver mes favoris</button>
         <button class="prems-btn ghost small prems-mobile-secondary" id="prems-fav-apply" title="Appliquer mes créneaux favoris à cette semaine">⚡ Appliquer mes favoris</button>
-        <button class="prems-btn ghost small prems-mobile-secondary" id="prems-swap-btn" title="Voir/proposer des échanges de créneaux">🔄 Mes échanges</button>
+        <button class="prems-btn ghost small prems-mobile-secondary prems-btn-with-badge" id="prems-swap-btn" title="Voir/proposer des échanges de créneaux">🔄 Mes échanges<span class="prems-notif-badge" id="prems-swap-badge" style="display:none;">0</span></button>
       </div>
       <div class="prems-mobile-secondary" style="display:flex; gap:8px; flex-wrap:wrap;">
         <div class="prems-export-group" style="display:flex; gap:8px;">
@@ -531,11 +546,15 @@
       <button class="prems-btn ghost small" id="prems-admin-reset">🗑️ Réinitialiser la semaine</button>
       <button class="prems-btn ghost small" id="prems-admin-next-week">⏭️ Forcer la semaine suivante</button>
       <button class="prems-btn ghost small" id="prems-admin-auto-week" style="display:none;">↺ Revenir à la semaine automatique</button>
-      <button class="prems-btn ghost small" id="prems-admin-missing">📣 Qui n'a rien pris ?</button>
+      <button class="prems-btn ghost small prems-btn-with-badge" id="prems-admin-missing">📣 Qui n'a rien pris ?<span class="prems-notif-badge" id="prems-missing-badge" style="display:none;">0</span></button>
+      <button class="prems-btn ghost small prems-btn-with-badge" id="prems-admin-priority">⚖️ Demandes de priorité<span class="prems-notif-badge" id="prems-priority-badge" style="display:none;">0</span></button>
+      <button class="prems-btn ghost small prems-btn-with-badge" id="prems-admin-swaps">🔄 Échanges à valider<span class="prems-notif-badge" id="prems-admin-swaps-badge" style="display:none;">0</span></button>
       <button class="prems-btn ghost small" id="prems-admin-recap">📊 Récap créneaux</button>
       <button class="prems-btn ghost small" id="prems-admin-oral-stats">🎤 Entretiens oraux</button>
       <button class="prems-btn ghost small" id="prems-admin-history">🗂️ Historique des semaines</button>
       <button class="prems-btn ghost small" id="prems-admin-log">🧾 Journal admin</button>
+      <button class="prems-btn ghost small" id="prems-admin-grades">🎓 Gérer les grades</button>
+      <button class="prems-btn ghost small" id="prems-admin-change-pwd">🔑 Changer le mot de passe admin</button>
       <button class="prems-btn ghost small" id="prems-admin-blink-toggle">🔕 Désactiver le clignotement des créneaux vides</button>
       <span style="display:flex; align-items:center; gap:6px;">
         <label class="prems-hint" for="prems-fatigue-input" title="Nombre max de créneaux d'affilée par jour. Au-delà, la prise du créneau est bloquée pour la personne concernée.">⚡ Seuil créneaux d'affilée (max/jour) :</label>
@@ -602,6 +621,11 @@
     { idx:7, label:"02h–04h", startHour:2 },
   ];
   const MAX_SAME_SLOT_PER_WEEK = 3;
+  // Écart minimum (en nombre de créneaux sur la semaine) qu'il faut avoir en
+  // moins que la personne en place pour pouvoir demander la priorité sur son
+  // créneau. Avant : 1 seul créneau d'écart suffisait, ce qui déclenchait des
+  // demandes de priorité pour des différences insignifiantes.
+  const PRIORITY_MIN_GAP = 4;
   // Recommandations personnalisées : si un(e) recruteur(trice) a occupé le même
   // jour+créneau sur au moins RECO_MIN_OCCURRENCES des RECO_LOOKBACK_WEEKS
   // dernières semaines connues, on lui recommande de reprendre ce créneau.
@@ -609,18 +633,53 @@
   const RECO_MIN_OCCURRENCES = 2;
   // Créneaux à forte affluence : surlignés en rouge quand ils sont vides (idx des SLOTS ci-dessus)
   const PEAK_SLOTS = [3,4]; // 18h–20h, 20h–22h
-  const GRADE_LABEL = { MF:"Médecin Formateur", RF:"Responsable Formateur", MC:"Médecin-Chef", ADD:"Assistant de Direction", CD:"Co-directeur", DIR:"Directeur" };
-  const PALETTE = ["#e2574c","#4ea8de","#8bc46a","#f2a541","#c792ea","#5fd4c0","#f06fa0","#a3b18a","#e8c547","#7aa5d2"];
-  // Couleur par grade (au lieu d'une couleur par personne) :
-  // MF et RF en blanc, MC en gris, ADD en rose clair, CD et DIR en rouge.
-  const GRADE_COLOR = { MF:"#f5f5f5", RF:"#ffffff", MC:"#9e9e9e", ADD:"#ffb6c1", CD:"#e2574c", DIR:"#e2574c" };
 
-  // Mot de passe partagé pour le mode administrateur.
-  // Change cette valeur pour définir ton propre mot de passe d'équipe,
-  // ou utilise "Changer le mot de passe admin" une fois connecté (il est
-  // alors stocké dans Firebase et prime sur cette valeur par défaut).
-  const ADMIN_PASSWORD = "pillbox-admin";
+  // --- Grades / rôles -------------------------------------------------------
+  // Valeurs PAR DÉFAUT uniquement : un administrateur peut désormais les
+  // ajouter/modifier/retirer à la volée depuis "🎓 Gérer les grades" (barre
+  // admin), sans toucher au code. Ce qui est réellement utilisé (GRADE_LABEL /
+  // GRADE_COLOR ci-dessous) est chargé depuis Firebase au démarrage (voir
+  // loadAll) et ne retombe sur ces valeurs par défaut que si rien n'a encore
+  // été personnalisé.
+  const DEFAULT_GRADES = {
+    MF:  { label:"Médecin Formateur",      color:"#f5f5f5" },
+    RF:  { label:"Responsable Formateur",  color:"#ffffff" },
+    MC:  { label:"Médecin-Chef",           color:"#9e9e9e" },
+    ADD: { label:"Assistant de Direction", color:"#ffb6c1" },
+    CD:  { label:"Co-directeur",           color:"#e2574c" },
+    DIR: { label:"Directeur",              color:"#e2574c" },
+  };
+  let GRADES = JSON.parse(JSON.stringify(DEFAULT_GRADES)); // remplacé au chargement par la config Firebase si elle existe
+  // Conservés comme "vues" à plat de GRADES, car c'est ce que le reste du
+  // code (déjà écrit) consomme (GRADE_LABEL[x], GRADE_COLOR[x]...).
+  let GRADE_LABEL = {}, GRADE_COLOR = {};
+  function rebuildGradeViews(){
+    GRADE_LABEL = {}; GRADE_COLOR = {};
+    Object.entries(GRADES).forEach(([code, g])=>{ GRADE_LABEL[code] = g.label; GRADE_COLOR[code] = g.color; });
+  }
+  rebuildGradeViews();
+
+  const PALETTE = ["#e2574c","#4ea8de","#8bc46a","#f2a541","#c792ea","#5fd4c0","#f06fa0","#a3b18a","#e8c547","#7aa5d2"];
+
+  // --- Mode administrateur ---------------------------------------------------
+  // SÉCURITÉ : le mot de passe n'est plus stocké en clair dans ce fichier.
+  // Seule son empreinte SHA-256 circule (calculée avec l'API Web Crypto du
+  // navigateur, native, aucune librairie externe). Ça ne rend pas ce mode
+  // admin infranchissable pour un attaquant très déterminé qui inspecterait
+  // le trafic réseau, mais ça supprime le problème le plus grave : un mot de
+  // passe lisible en clair par n'importe qui via "Voir le code source".
+  // Hash SHA-256 du mot de passe par défaut "pillbox-admin" (à changer dès la
+  // mise en service via le bouton "🔑 Changer le mot de passe admin" une fois
+  // connecté — le nouveau hash est alors stocké dans Firebase et prime sur
+  // celui-ci) :
+  const DEFAULT_ADMIN_PASSWORD_HASH = "066cc816cf9851c604fb80183283904bc0e12eaee7d4a65bff66ba2cc73f1f7b";
+  let adminPasswordHash = DEFAULT_ADMIN_PASSWORD_HASH; // écrasé au chargement par Firebase si un mot de passe a déjà été changé
   let isAdmin = false;
+
+  async function sha256Hex(text){
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
 
   // ============================================================
   // CONFIGURATION FIREBASE — À REMPLIR OBLIGATOIREMENT
@@ -629,6 +688,25 @@
   // "https://planning-recrutement-default-rtdb.europe-west1.firebasedatabase.app"
   // ============================================================
   const FIREBASE_URL = "https://planning-recrutement-default-rtdb.europe-west1.firebasedatabase.app";
+
+  // ============================================================
+  // CONFIGURATION FIREBASE AUTH — recommandé pour la sécurité, optionnel
+  // techniquement (l'app fonctionne sans, comme avant, mais alors n'importe
+  // qui connaissant FIREBASE_URL peut lire/écrire directement dans la base
+  // par une simple requête HTTP, en contournant complètement l'appli).
+  // Récupère ces valeurs (elles ne sont PAS secrètes, contrairement à un mot
+  // de passe) dans la Console Firebase > Paramètres du projet > Général >
+  // "Vos applications" > icône Web (</>). Active aussi "Authentication" >
+  // "Sign-in method" > "Anonyme" dans la console (gratuit, aucune carte
+  // bancaire requise). Voir les règles de base de données à coller, en bas
+  // de ce fichier, dans le commentaire "RÈGLES FIREBASE À COLLER".
+  // ============================================================
+  const FIREBASE_CONFIG = {
+    apiKey: "COLLE_TA_CLE_API_FIREBASE_ICI",
+    authDomain: "COLLE_TON_AUTH_DOMAIN_ICI", // ex: planning-recrutement.firebaseapp.com
+    databaseURL: FIREBASE_URL,
+    projectId: "COLLE_TON_PROJECT_ID_ICI",
+  };
 
   // --- Suivi de la connexion à Firebase ---
   // Affiche une bannière persistante (distincte du message de statut ponctuel)
@@ -649,9 +727,65 @@
     }
   }
 
+  // --- Authentification anonyme Firebase (sécurité) -------------------------
+  // Sans ça, n'importe qui trouvant FIREBASE_URL (visible dans ce code, donc
+  // trivial à récupérer) peut lire/écrire directement dans la base par de
+  // simples requêtes HTTP, en contournant complètement l'appli (mode admin,
+  // quotas de créneaux, tout). Avec l'authentification anonyme activée côté
+  // Firebase + une règle ".write": "auth != null" (voir en bas de fichier),
+  // il faut au minimum passer par le vrai mécanisme d'auth de Firebase pour
+  // pouvoir écrire quoi que ce soit — ça élimine la classe d'attaque la plus
+  // fréquente ("j'ai trouvé l'URL, je fais un curl PUT dessus").
+  // Limite honnête : ça n'empêche pas un attaquant très déterminé qui irait
+  // lui-même chercher un jeton anonyme via l'API Firebase. Une séparation
+  // stricte "admin vs simple recruteur" garantie côté serveur demanderait de
+  // vrais comptes Firebase par admin (custom claims) — hors périmètre ici.
+  let authIdToken = null;
+  function loadFirebaseSdk(){
+    return new Promise((resolve, reject)=>{
+      if(window.firebase && window.firebase.apps){ resolve(); return; }
+      const s1 = document.createElement('script');
+      s1.src = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js';
+      s1.onload = ()=>{
+        const s2 = document.createElement('script');
+        s2.src = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js';
+        s2.onload = ()=>resolve();
+        s2.onerror = ()=>reject(new Error('firebase-auth-compat load failed'));
+        document.head.appendChild(s2);
+      };
+      s1.onerror = ()=>reject(new Error('firebase-app-compat load failed'));
+      document.head.appendChild(s1);
+    });
+  }
+  async function initFirebaseAuth(){
+    if(FIREBASE_CONFIG.apiKey.includes("COLLE_")){
+      console.warn("Firebase Auth non configuré (FIREBASE_CONFIG à remplir) — les écritures partent sans jeton d'authentification tant que ce n'est pas fait. Voir les instructions au-dessus de FIREBASE_CONFIG.");
+      return;
+    }
+    try{
+      await loadFirebaseSdk();
+      if(!window.firebase.apps.length) window.firebase.initializeApp(FIREBASE_CONFIG);
+      await window.firebase.auth().signInAnonymously();
+      window.firebase.auth().onIdTokenChanged(async (user)=>{
+        try{ authIdToken = user ? await user.getIdToken() : null; }catch(e){ authIdToken = null; }
+      });
+      // Rafraîchit le jeton régulièrement (il expire au bout d'1h chez Firebase)
+      setInterval(async ()=>{
+        const u = window.firebase.auth().currentUser;
+        if(u){ try{ authIdToken = await u.getIdToken(true); }catch(e){} }
+      }, 45*60*1000);
+    }catch(e){
+      console.error('Firebase Auth init failed', e);
+      setStatus("⚠️ Authentification indisponible — si des règles de sécurité Firebase sont actives, certaines écritures pourraient être refusées.", "err");
+    }
+  }
+
   // --- Petit client REST minimal pour Firebase Realtime Database ---
   // Remplace le window.storage propre aux artéfacts Claude.ai, qui ne
   // fonctionne pas une fois la page hébergée sur un site classique.
+  function withAuth(url){
+    return authIdToken ? `${url}${url.includes('?') ? '&' : '?'}auth=${authIdToken}` : url;
+  }
   async function fbGet(key){
     try{
       const res = await fetch(`${FIREBASE_URL}/${key}.json`);
@@ -666,7 +800,7 @@
   }
   async function fbSet(key, value){
     try{
-      const res = await fetch(`${FIREBASE_URL}/${key}.json`, {
+      const res = await fetch(withAuth(`${FIREBASE_URL}/${key}.json`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(value)
@@ -674,6 +808,28 @@
       if(!res.ok) throw new Error('fb set failed: ' + res.status);
       setConnectionStatus(true);
       return true;
+    }catch(e){
+      setConnectionStatus(false);
+      throw e;
+    }
+  }
+  // Écriture "additive" (équivalent du push() du SDK Firebase) : génère une
+  // clé unique côté serveur au lieu d'écraser toute la valeur existante.
+  // Utilisé pour le journal d'actions, pour ne plus jamais perdre une entrée
+  // en cas d'écritures simultanées (contrairement à un schéma lire-modifier-
+  // réécrire tout le tableau, qui perd des entrées quand deux personnes
+  // agissent au même moment).
+  async function fbPush(key, value){
+    try{
+      const res = await fetch(withAuth(`${FIREBASE_URL}/${key}.json`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value)
+      });
+      if(!res.ok) throw new Error('fb push failed: ' + res.status);
+      setConnectionStatus(true);
+      const data = await res.json(); // { name: "-Nxxxxxxxxxxxxxxxxxxxx" }
+      return data.name;
     }catch(e){
       setConnectionStatus(false);
       throw e;
@@ -736,6 +892,15 @@
   let blinkDisabled = false;   // réglage partagé : un admin peut désactiver le clignotement des créneaux vides pour tout le monde
   let fatigueThreshold = 3;    // réglage partagé : nb max de créneaux d'affilée autorisé avant blocage "fatigue"
   let myRecommendations = [];  // [{day, slotIdx, key, count}] recommandations pour le recruteur actuellement sélectionné
+  // Demandes de priorité en attente de validation par un administrateur.
+  // { id, requesterName, targetName, key, day, slotIdx, slotLabel, myTotal,
+  //   theirTotal, status:'pending'|'approved'|'rejected', createdAt,
+  //   resolvedAt, resolvedBy, seenByRequester }
+  let priorityRequests = [];
+  // Cache local des demandes d'échange (toutes personnes confondues), rechargé
+  // à chaque loadAll — sert au badge admin "🔄 Échanges à valider" sans avoir
+  // à refaire un appel réseau à chaque rendu.
+  let swapRequestsCache = [];
   let recoComputedFor = null;  // "nom|weekKey" déjà calculé, pour éviter de refaire les requêtes Firebase inutilement
   const recoBannerEl = document.getElementById('prems-reco-banner');
 
@@ -1329,6 +1494,19 @@
     });
   }
 
+  // Peuple le select "Nouveau recruteur" à partir de GRADES (dynamique, cf.
+  // panneau "🎓 Gérer les grades") au lieu d'options figées en dur dans le HTML.
+  function renderGradeSelectOptions(){
+    const sel = document.getElementById('prems-new-grade');
+    if(!sel) return;
+    const prev = sel.value;
+    const codes = Object.keys(GRADES);
+    sel.innerHTML = codes.length
+      ? codes.map(code=>`<option value="${code}">${GRADE_LABEL[code]} (${code})</option>`).join('')
+      : `<option value="">Aucun grade configuré</option>`;
+    if(codes.includes(prev)) sel.value = prev;
+  }
+
   function renderRecruiterSelect(){
     const prev = recruiterSelect.value;
     recruiterSelect.innerHTML = recruiters.length
@@ -1345,13 +1523,15 @@
   }
 
   function renderLegend(){
+    const me = recruiterSelect.value;
     legendEl.innerHTML = recruiters.map(r=>{
       const c = colorFor(r.grade);
       const absentBit = absences[r.name] ? `<span class="prems-absent-pill">absent</span>` : '';
       const adminBtns = isAdmin
         ? `<span class="abs-toggle" data-abs-toggle="${r.name}" title="${absences[r.name] ? 'Retirer absence' : 'Marquer absent(e)'}">${absences[r.name] ? '✓' : '🚫'}</span><span class="edit" data-edit="${r.name}" title="Modifier ce recruteur">✎</span><span class="remove" data-remove="${r.name}" title="Retirer ce recruteur">✕</span>`
         : '';
-      return `<span class="chip"><span class="swatch" style="background:${c}"></span>${r.name} — ${GRADE_LABEL[r.grade]||r.grade}${absentBit}${adminBtns}</span>`;
+      const isMe = r.name === me;
+      return `<span class="chip${isMe ? ' is-me' : ''}"${isMe ? ' title="C\'est toi"' : ''}><span class="swatch" style="background:${c}"></span>${r.name} — ${GRADE_LABEL[r.grade]||r.grade}${isMe ? ' 👤' : ''}${absentBit}${adminBtns}</span>`;
     }).join('') || `<span class="prems-hint">Ajoute un recruteur ci-dessus pour commencer.</span>`;
 
     legendEl.querySelectorAll('[data-remove]').forEach(el=>{
@@ -1387,8 +1567,9 @@
     if(isAdmin) renderAdminStats();
   }
 
-  adminToggleBtn.addEventListener('click', ()=>{
+  adminToggleBtn.addEventListener('click', async ()=>{
     if(isAdmin){
+      logAction(currentAdminName, "s'est déconnecté(e) du mode administrateur");
       isAdmin = false;
       setAdminUI();
       setStatus("Mode administrateur désactivé.");
@@ -1396,7 +1577,8 @@
     }
     const pwd = window.prompt("Mot de passe administrateur :");
     if(pwd === null) return;
-    if(pwd !== ADMIN_PASSWORD){
+    const hash = await sha256Hex(pwd);
+    if(hash !== adminPasswordHash){
       setStatus("Mot de passe incorrect.", "err");
       return;
     }
@@ -1412,6 +1594,34 @@
     isAdmin = true;
     setAdminUI();
     setStatus(`Mode administrateur activé — connecté en tant que ${currentAdminName}.`, "ok");
+    logAction(currentAdminName, "s'est connecté(e) au mode administrateur");
+  });
+
+  // --- Changer le mot de passe admin (le hash est stocké dans Firebase) ---
+  document.getElementById('prems-admin-change-pwd').addEventListener('click', async ()=>{
+    if(!isAdmin) return;
+    const current = window.prompt("Mot de passe admin actuel (confirmation) :");
+    if(current === null) return;
+    if((await sha256Hex(current)) !== adminPasswordHash){
+      setStatus("Mot de passe actuel incorrect — rien n'a été changé.", "err");
+      return;
+    }
+    const next = window.prompt("Nouveau mot de passe administrateur (partagé pour toute l'équipe habilitée) :");
+    if(!next || next.length < 6){
+      setStatus("Nouveau mot de passe trop court (6 caractères minimum) — rien n'a été changé.", "err");
+      return;
+    }
+    const nextHash = await sha256Hex(next);
+    try{
+      await fbSet('admin-config/password-hash', nextHash);
+    }catch(e){
+      console.error(e);
+      setStatus("Échec de l'enregistrement du nouveau mot de passe.", "err");
+      return;
+    }
+    adminPasswordHash = nextHash;
+    logAction(currentAdminName, "a changé le mot de passe administrateur");
+    setStatus("Mot de passe administrateur changé avec succès pour toute l'équipe.", "ok");
   });
 
   function openEditRecruiterModal(name){
@@ -1482,6 +1692,7 @@
   }
 
   function renderAll(){
+    renderGradeSelectOptions();
     renderTable();
     renderRecruiterSelect();
     renderLegend();
@@ -1531,6 +1742,33 @@
       }catch(e){ console.error(e); fatigueThreshold = 3; }
       if(fatigueInputEl) fatigueInputEl.value = fatigueThreshold;
 
+      // Grades : la config Firebase (si elle existe) remplace entièrement les
+      // valeurs par défaut — c'est elle qui fait foi une fois qu'un admin a
+      // touché au panneau "🎓 Gérer les grades".
+      try{
+        const gc = await fbGet('grades-config');
+        GRADES = (gc && Object.keys(gc).length) ? gc : JSON.parse(JSON.stringify(DEFAULT_GRADES));
+      }catch(e){ console.error(e); }
+      rebuildGradeViews();
+
+      // Mot de passe admin : le hash stocké dans Firebase prime sur celui par
+      // défaut dès qu'il a été changé via "🔑 Changer le mot de passe admin".
+      try{
+        const ph = await fbGet('admin-config/password-hash');
+        adminPasswordHash = ph || DEFAULT_ADMIN_PASSWORD_HASH;
+      }catch(e){ console.error(e); }
+
+      // Demandes de priorité (désormais soumises à validation admin, cf.
+      // "⚖️ Demandes de priorité" dans la barre admin).
+      try{
+        priorityRequests = (await fbGet('priority-requests')) || [];
+      }catch(e){ console.error(e); priorityRequests = []; }
+
+      // Cache des demandes d'échange, pour le badge admin "🔄 Échanges à valider".
+      try{
+        swapRequestsCache = await loadSwapRequests();
+      }catch(e){ console.error(e); swapRequestsCache = []; }
+
       renderAll();
       firstLoadRendered = true;
       if(!silent) setStatus("Planning à jour — partagé avec toute la cellule recrutement.");
@@ -1574,15 +1812,23 @@
     }
   }
 
-  // --- Journal des actions admin (traçabilité) ---
-  async function logAdminAction(action, detail){
+  // --- Journal d'actions (traçabilité) ---------------------------------------
+  // Couvre maintenant TOUTES les actions qui modifient l'état partagé, pas
+  // seulement celles du mode admin (prise/retrait de créneau, entretien oral,
+  // échanges, absence...), avec l'auteur réel (le nom sélectionné dans "Je
+  // remplis le planning en tant que"). Chaque entrée est écrite sous une clé
+  // unique générée par Firebase (fbPush) au lieu de relire-puis-réécrire tout
+  // le tableau : deux actions simultanées ne peuvent donc plus s'écraser
+  // l'une l'autre (ce qui pouvait arriver avec l'ancien schéma).
+  async function logAction(actor, action, detail, extra){
     try{
-      const entry = { ts: new Date().toISOString(), name: currentAdminName || "Admin inconnu", action, detail: detail || "" };
-      const existing = (await fbGet('admin-logs')) || [];
-      existing.push(entry);
-      while(existing.length > 200) existing.shift();
-      await fbSet('admin-logs', existing);
-    }catch(e){ console.error('log admin action failed', e); }
+      const entry = Object.assign({ ts: new Date().toISOString(), name: actor || "Inconnu", action, detail: detail || "" }, extra || {});
+      await fbPush('admin-logs', entry);
+    }catch(e){ console.error('log action failed', e); }
+  }
+  // Conservé pour ne pas retoucher tous les appels existants (actions du mode admin).
+  async function logAdminAction(action, detail){
+    return logAction(currentAdminName || "Admin inconnu", action, detail);
   }
 
   // --- Historique des semaines (pour la consultation en lecture seule) ---
@@ -1748,16 +1994,33 @@
       actionsHtml += `<p class="prems-hint">Tu es marqué(e) absent(e) cette semaine — décoche « Absent(e) » pour pouvoir prendre un créneau.</p>`;
     } else if(slotTaken){
       // Créneau déjà pris par quelqu'un d'autre : suppléant possible, ou
-      // priorité si je suis moins chargé(e) que le/la titulaire actuel(le).
+      // demande de priorité (désormais soumise à validation par un
+      // administrateur — plus d'échange instantané) si l'écart de charge
+      // est suffisant.
       const availableTitulaire = list.find(a=>!a.suppleant);
+      const myPendingRequest = priorityRequests.find(r=>r.requesterName===me && r.key===key && r.status==='pending');
+      const myUnseenResolved = priorityRequests.find(r=>r.requesterName===me && r.key===key && r.status!=='pending' && r.seenByRequester===false);
+      if(myUnseenResolved){
+        actionsHtml += myUnseenResolved.status === 'approved'
+          ? `<p class="prems-hint">✅ Ta demande de priorité sur ce créneau a été <strong>validée</strong> par ${myUnseenResolved.resolvedBy || 'un administrateur'}.</p>`
+          : `<p class="prems-hint">❌ Ta demande de priorité sur ce créneau a été <strong>refusée</strong> par ${myUnseenResolved.resolvedBy || 'un administrateur'}.</p>`;
+        // Marquée comme vue dès l'ouverture de ce créneau, pour ne pas la
+        // rappeler à chaque fois qu'on le rouvre.
+        const idToMark = myUnseenResolved.id;
+        loadPriorityRequests().then(list2=>{
+          savePriorityRequests(list2.map(r=> r.id===idToMark ? { ...r, seenByRequester:true } : r));
+        });
+      }
       if(availableTitulaire){
         const myTotal = countTotalSlotsForName(me);
         const theirTotal = countTotalSlotsForName(availableTitulaire.titulaire);
         actionsHtml += `<button class="prems-btn ghost" data-action="suppleant" data-of="${availableTitulaire.titulaire}">Me mettre suppléant de ${availableTitulaire.titulaire}</button>`;
-        if(myTotal < theirTotal){
-          actionsHtml += `<button class="prems-btn" data-action="priority-claim" data-of="${availableTitulaire.titulaire}">⚖️ Demander la priorité (toi : ${myTotal} créneau${myTotal>1?'x':''} vs ${availableTitulaire.titulaire} : ${theirTotal})</button>`;
+        if(myPendingRequest){
+          actionsHtml += `<p class="prems-hint">⏳ Demande de priorité déjà envoyée pour ce créneau, en attente de validation par un administrateur.</p>`;
+        } else if(theirTotal - myTotal >= PRIORITY_MIN_GAP){
+          actionsHtml += `<button class="prems-btn" data-action="request-priority" data-of="${availableTitulaire.titulaire}">⚖️ Demander la priorité — à valider par un administrateur (toi : ${myTotal} créneau${myTotal>1?'x':''} vs ${availableTitulaire.titulaire} : ${theirTotal})</button>`;
         } else {
-          actionsHtml += `<p class="prems-hint">⚖️ Pas de priorité possible ici : ${availableTitulaire.titulaire} a ${theirTotal} créneau${theirTotal>1?'x':''} cette semaine, toi ${myTotal} — la priorité va à qui en a le moins.</p>`;
+          actionsHtml += `<p class="prems-hint">⚖️ Pas de priorité possible ici : il faut au moins ${PRIORITY_MIN_GAP} créneaux d'écart (${availableTitulaire.titulaire} a ${theirTotal} créneau${theirTotal>1?'x':''} cette semaine, toi ${myTotal}).</p>`;
         }
       } else {
         actionsHtml += `<p class="prems-hint">Ce créneau est déjà pris et a déjà un(e) suppléant(e) — rien à faire ici.</p>`;
@@ -1843,17 +2106,19 @@
     }
 
     modalLayer.querySelectorAll('[data-action]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
+      btn.addEventListener('click', async ()=>{
         const action = btn.dataset.action;
         if(action === 'close'){ closeModal(); return; }
         if(action === 'propose-swap'){ openSwapProposalModal(day, slotIdx, key, me); return; }
         if(action === 'remove-mine'){
           planning[key] = list.filter(a=>a.titulaire!==me);
           if(!planning[key].length) delete planning[key];
+          logAction(me, "s'est retiré(e) d'un créneau", `${day} ${slotLabel}`);
           finishSlotAction();
         } else if(action === 'remove-suppleance'){
           const a = list.find(a=>a.suppleant===me);
           if(a) a.suppleant = null;
+          logAction(me, "a retiré sa suppléance", `${day} ${slotLabel}`);
           finishSlotAction();
         } else if(action === 'take'){
           if(countSameSlotDays(me, slotIdx, null) >= MAX_SAME_SLOT_PER_WEEK) return;
@@ -1867,6 +2132,10 @@
           const newList = list.slice();
           newList.push({ titulaire: me, suppleant: null, partial });
           planning[key] = newList;
+          // Inscription tardive : le créneau a déjà commencé au moment où il est pris.
+          const slotDT = getSlotDateTime(DAYS.indexOf(day), slotIdx);
+          const late = !!(slotDT && new Date() > slotDT);
+          logAction(me, "a pris un créneau", `${day} ${slotLabel}`, { late });
           finishSlotAction();
         } else if(action === 'update-partial'){
           const a = list.find(a=>a.titulaire===me);
@@ -1875,20 +2144,21 @@
         } else if(action === 'toggle-oral'){
           const a = list.find(a=>a.titulaire===me);
           if(a) a.oral = !a.oral;
+          logAction(me, a && a.oral ? "a marqué un entretien oral prévu" : "a retiré le marquage entretien oral", `${day} ${slotLabel}`);
           finishSlotAction();
         } else if(action === 'suppleant'){
           const of = btn.dataset.of;
           const a = list.find(a=>a.titulaire===of);
-          if(a && !a.suppleant) a.suppleant = me;
+          if(a && !a.suppleant){ a.suppleant = me; logAction(me, "s'est désigné(e) suppléant(e)", `de ${of} — ${day} ${slotLabel}`); }
           finishSlotAction();
-        } else if(action === 'priority-claim'){
+        } else if(action === 'request-priority'){
           const of = btn.dataset.of;
           const target = list.find(a=>a.titulaire===of);
           if(!target || target.suppleant){ closeModal(); return; }
           const myTotal = countTotalSlotsForName(me);
           const theirTotal = countTotalSlotsForName(of);
-          if(myTotal >= theirTotal){
-            setStatus("La priorité a changé entre-temps : tu n'as plus moins de créneaux qu'eux.", "err");
+          if(theirTotal - myTotal < PRIORITY_MIN_GAP){
+            setStatus(`La priorité a changé entre-temps : il faut au moins ${PRIORITY_MIN_GAP} créneaux d'écart, ce n'est plus le cas.`, "err");
             closeModal();
             return;
           }
@@ -1901,10 +2171,19 @@
             setStatus(`⛔ Créneau bloqué : tu enchaînerais ${projectedRun} créneaux d'affilée le ${day} (soit ${projectedRun*2}h), au-delà du seuil autorisé (${fatigueThreshold}).`, "err");
             return;
           }
-          if(!window.confirm(`Prendre la priorité sur ce créneau à la place de ${of} (qui a plus de créneaux que toi cette semaine — ${theirTotal} vs ${myTotal}) ?`)) return;
-          planning[key] = list.map(a=> a.titulaire===of ? { titulaire: me, suppleant: null, partial: null, oral: false } : a);
-          setStatus(`Tu as pris la priorité sur ce créneau à la place de ${of} (moins de créneaux que lui/elle cette semaine).`, "ok");
-          finishSlotAction();
+          if(priorityRequests.some(r=>r.requesterName===me && r.key===key && r.status==='pending')){ closeModal(); return; }
+          const req = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+            requesterName: me, targetName: of, key, day, slotIdx, slotLabel,
+            myTotal, theirTotal, status:'pending', createdAt: new Date().toISOString()
+          };
+          const reqList = await loadPriorityRequests();
+          reqList.push(req);
+          await savePriorityRequests(reqList);
+          logAction(me, "a demandé la priorité sur un créneau", `à la place de ${of} — ${day} ${slotLabel} (en attente de validation admin)`);
+          setStatus(`Demande de priorité envoyée pour ${day} ${slotLabel} — en attente de validation par un administrateur.`, "ok");
+          if(isAdmin) renderAdminStats(); // rafraîchit le badge admin si la personne qui demande est aussi admin
+          closeModal();
         } else if(action === 'admin-remove-titulaire'){
           if(!isAdmin) return;
           const targetName = btn.dataset.name;
@@ -1967,8 +2246,105 @@
   async function loadSwapRequests(){
     try{ return (await fbGet('swap-requests')) || []; }catch(e){ console.error(e); return []; }
   }
+  // Purge les demandes résolues (acceptées/refusées) de plus de 30 jours à
+  // chaque sauvegarde — les demandes "pending" ne sont, elles, jamais purgées
+  // automatiquement (une réponse en attente ne doit jamais disparaître seule).
+  function pruneOldSwapRequests(list){
+    const cutoff = Date.now() - 30*24*3600*1000;
+    return list.filter(r => r.status === 'pending' || new Date(r.resolvedAt || r.createdAt).getTime() >= cutoff);
+  }
   async function saveSwapRequests(list){
-    try{ await fbSet('swap-requests', list); }catch(e){ console.error(e); setStatus("Échec de l'enregistrement de la demande d'échange.", "err"); }
+    try{ await fbSet('swap-requests', pruneOldSwapRequests(list)); }catch(e){ console.error(e); setStatus("Échec de l'enregistrement de la demande d'échange.", "err"); }
+  }
+
+  // --- Demandes de priorité (soumises à validation admin) -------------------
+  async function loadPriorityRequests(){
+    try{ return (await fbGet('priority-requests')) || []; }catch(e){ console.error(e); return []; }
+  }
+  function pruneOldPriorityRequests(list){
+    const cutoff = Date.now() - 30*24*3600*1000;
+    return list.filter(r => r.status === 'pending' || new Date(r.resolvedAt || r.createdAt).getTime() >= cutoff);
+  }
+  async function savePriorityRequests(list){
+    const pruned = pruneOldPriorityRequests(list);
+    try{ await fbSet('priority-requests', pruned); priorityRequests = pruned; }
+    catch(e){ console.error(e); setStatus("Échec de l'enregistrement de la demande de priorité.", "err"); }
+  }
+
+  // --- Badge admin : nombre de demandes de priorité en attente ---
+  function updatePriorityBadge(){
+    const badge = document.getElementById('prems-priority-badge');
+    if(!badge) return;
+    const pendingCount = priorityRequests.filter(r=>r.status==='pending').length;
+    badge.textContent = pendingCount > 9 ? '9+' : String(pendingCount);
+    badge.style.display = pendingCount > 0 ? 'flex' : 'none';
+    badge.style.alignItems = 'center';
+    badge.style.justifyContent = 'center';
+  }
+
+  // --- Badge sur "🔄 Mes échanges" : demandes reçues en attente + réponses
+  // à tes demandes envoyées pas encore vues (acceptée/refusée) ---
+  // Pour que ce soit visible sans avoir à ouvrir la fenêtre : un petit rond
+  // rouge avec le nombre apparaît directement sur le bouton dès qu'une
+  // demande t'attend (ex: "Yoda t'a proposé un échange" → badge "1"), et
+  // reste affiché tant que tu n'as pas ouvert la fenêtre pour voir la
+  // réponse à une demande que tu as toi-même envoyée.
+  const swapBadgeEl = document.getElementById('prems-swap-badge');
+  let lastSwapBadgeCount = 0;
+  const ORIGINAL_TAB_TITLE = document.title || "Planning recrutement EMS";
+  let titleBlinkInterval = null;
+  function startTitleBlink(text){
+    if(titleBlinkInterval) return; // déjà en cours
+    let toggle = false;
+    titleBlinkInterval = setInterval(()=>{
+      document.title = toggle ? text : ORIGINAL_TAB_TITLE;
+      toggle = !toggle;
+    }, 1200);
+  }
+  function stopTitleBlink(){
+    if(titleBlinkInterval){ clearInterval(titleBlinkInterval); titleBlinkInterval = null; }
+    document.title = ORIGINAL_TAB_TITLE;
+  }
+  // Dès que l'onglet redevient actif, on arrête le clignotement (l'utilisateur
+  // a vu qu'il se passait quelque chose, pas besoin d'insister).
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) stopTitleBlink(); });
+
+  async function updateSwapBadge(){
+    const me = recruiterSelect.value;
+    if(!me){ if(swapBadgeEl) swapBadgeEl.style.display = 'none'; stopTitleBlink(); return; }
+    let all = [];
+    try{ all = await loadSwapRequests(); }catch(e){ return; }
+    const receivedCount = all.filter(r=>r.toName===me && r.status==='pending').length;
+    const sentUnseenCount = all.filter(r=>r.fromName===me && r.status!=='pending' && r.seenBySender===false).length;
+    const forcedUnseenCount = all.filter(r=>r.toName===me && r.status!=='pending' && r.forcedByAdmin && r.seenByRecipient===false).length;
+    const total = receivedCount + sentUnseenCount + forcedUnseenCount;
+    if(!swapBadgeEl) return;
+    if(total > 0){
+      swapBadgeEl.textContent = total > 9 ? '9+' : String(total);
+      swapBadgeEl.title = [
+        receivedCount ? `${receivedCount} demande(s) reçue(s) en attente` : null,
+        sentUnseenCount ? `${sentUnseenCount} réponse(s) pas encore vue(s)` : null,
+        forcedUnseenCount ? `${forcedUnseenCount} décision(s) forcée(s) par un admin pas encore vue(s)` : null
+      ].filter(Boolean).join(' — ');
+      if(swapBadgeEl.style.display === 'none' || total !== lastSwapBadgeCount){
+        // Rejoue la petite animation d'apparition quand le compteur change (nouvelle demande reçue).
+        swapBadgeEl.style.animation = 'none';
+        void swapBadgeEl.offsetWidth; // force le recalcul pour relancer l'animation CSS
+        swapBadgeEl.style.animation = '';
+      }
+      swapBadgeEl.style.display = 'flex';
+      swapBadgeEl.style.alignItems = 'center';
+      swapBadgeEl.style.justifyContent = 'center';
+      // Si l'onglet est en arrière-plan, on fait clignoter son titre pour
+      // attirer l'attention même si on a changé de fenêtre/appli.
+      if(document.hidden && total > lastSwapBadgeCount){
+        startTitleBlink(`🔴 ${total} échange${total>1?'s':''} — ${ORIGINAL_TAB_TITLE}`);
+      }
+    } else {
+      swapBadgeEl.style.display = 'none';
+      stopTitleBlink();
+    }
+    lastSwapBadgeCount = total;
   }
 
   function openSwapProposalModal(fromDay, fromSlotIdx, fromKey, me){
@@ -2022,13 +2398,16 @@
         await saveSwapRequests(list);
         closeModal();
         setStatus(`Demande d'échange envoyée à ${chosen.name}.`, "ok");
+        updateSwapBadge();
       });
     }
   }
 
-  async function respondSwap(req, accept){
+  async function respondSwap(req, accept, forcedByAdmin){
     let list = await loadSwapRequests();
-    list = list.filter(r=>r.id!==req.id);
+    const idx = list.findIndex(r=>r.id===req.id);
+    if(idx === -1){ updateSwapBadge(); return; }
+    const admin = currentAdminName || "Admin inconnu";
     if(accept){
       const fromList = planning[req.fromKey] || [];
       const toList = planning[req.toKey] || [];
@@ -2039,14 +2418,32 @@
         toEntry.titulaire = req.fromName;
         renderAll();
         await savePlanning();
-        setStatus("Échange effectué.", "ok");
+        setStatus(forcedByAdmin ? "Échange validé de force par un administrateur." : "Échange effectué.", "ok");
+        if(forcedByAdmin){
+          logAction(admin, "a validé de force un échange de créneau", `entre ${req.fromName} et ${req.toName} — ${req.fromLabel} / ${req.toLabel}`);
+        } else {
+          logAction(req.toName, "a accepté un échange de créneau", `avec ${req.fromName}`);
+        }
+        // Le statut reste visible (au lieu de disparaître) pour que ${req.fromName}
+        // sache que ${req.toName} a accepté, plutôt qu'une disparition silencieuse.
+        list[idx] = { ...list[idx], status:'accepted', resolvedAt: new Date().toISOString(), seenBySender: false, seenByRecipient: false, forcedByAdmin: !!forcedByAdmin, resolvedBy: forcedByAdmin ? admin : null };
       } else {
         setStatus("Ce créneau a changé entre-temps, échange impossible.", "err");
+        list[idx] = { ...list[idx], status:'declined', resolvedAt: new Date().toISOString(), seenBySender: false, seenByRecipient: false, resolvedBy: forcedByAdmin ? admin : null };
       }
     } else {
-      setStatus("Demande d'échange refusée.", "ok");
+      setStatus(forcedByAdmin ? "Échange refusé par un administrateur." : "Demande d'échange refusée.", "ok");
+      if(forcedByAdmin){
+        logAction(admin, "a refusé (en tant qu'admin) un échange de créneau", `entre ${req.fromName} et ${req.toName} — ${req.fromLabel} / ${req.toLabel}`);
+      } else {
+        logAction(req.toName, "a refusé un échange de créneau", `proposé par ${req.fromName}`);
+      }
+      list[idx] = { ...list[idx], status:'declined', resolvedAt: new Date().toISOString(), seenBySender: false, seenByRecipient: false, resolvedBy: forcedByAdmin ? admin : null };
     }
     await saveSwapRequests(list);
+    swapRequestsCache = list;
+    updateSwapBadge();
+    if(isAdmin) renderAdminStats();
   }
 
   async function openSwapListModal(){
@@ -2054,26 +2451,57 @@
     if(!me){ setStatus("Sélectionne d'abord ton nom.", "err"); return; }
     const all = await loadSwapRequests();
     const received = all.filter(r=>r.toName===me && r.status==='pending');
-    const sent = all.filter(r=>r.fromName===me && r.status==='pending');
+    const sentPending = all.filter(r=>r.fromName===me && r.status==='pending');
+    // Résolues récemment (48h) : on les montre encore un moment avec leur
+    // statut, plutôt que de les faire disparaître dès qu'elles sont traitées
+    // — sinon l'expéditeur ne sait jamais ce qui s'est passé.
+    const sentResolvedRecent = all.filter(r=>
+      r.fromName===me && r.status!=='pending' &&
+      (Date.now() - new Date(r.resolvedAt || r.createdAt).getTime()) < 48*3600*1000
+    );
+    // Pareil côté destinataire, mais uniquement quand un admin a tranché à sa
+    // place (forcedByAdmin) : si c'est toi qui as cliqué Accepter/Refuser, tu
+    // connais déjà l'issue, pas besoin de te le rappeler.
+    const receivedResolvedRecent = all.filter(r=>
+      r.toName===me && r.status!=='pending' && r.forcedByAdmin && r.seenByRecipient===false &&
+      (Date.now() - new Date(r.resolvedAt || r.createdAt).getTime()) < 48*3600*1000
+    );
 
-    const receivedHtml = received.length
-      ? received.map(r=>`
+    const receivedPendingHtml = received.map(r=>`
           <div class="prems-swap-item">
             <strong>${r.fromName}</strong> propose : ton créneau <em>${r.toLabel}</em> contre son créneau <em>${r.fromLabel}</em>.
             <div class="row">
               <button class="prems-btn small" data-accept="${r.id}">Accepter</button>
               <button class="prems-btn ghost small" data-decline="${r.id}">Refuser</button>
             </div>
-          </div>`).join('')
-      : `<p class="prems-hint">Aucune demande reçue.</p>`;
+          </div>`).join('');
+    const receivedResolvedHtml = receivedResolvedRecent.map(r=>{
+      const label = r.status === 'accepted'
+        ? `⚡ Un administrateur (${r.resolvedBy || 'inconnu'}) a validé de force l'échange proposé par ${r.fromName}.`
+        : `⚡ Un administrateur (${r.resolvedBy || 'inconnu'}) a refusé l'échange proposé par ${r.fromName}.`;
+      return `<div class="prems-swap-item prems-swap-item-new">${label} <span class="prems-partial-pill">nouveau</span></div>`;
+    }).join('');
+    const receivedHtml = (receivedPendingHtml || receivedResolvedHtml) ? (receivedResolvedHtml + receivedPendingHtml) : `<p class="prems-hint">Aucune demande reçue.</p>`;
 
-    const sentHtml = sent.length
-      ? sent.map(r=>`
+    const sentPendingHtml = sentPending.map(r=>`
           <div class="prems-swap-item">
             Tu as proposé à <strong>${r.toName}</strong> : ton créneau <em>${r.fromLabel}</em> contre son créneau <em>${r.toLabel}</em>.
             <div class="row"><button class="prems-btn ghost small" data-cancel="${r.id}">Annuler</button></div>
-          </div>`).join('')
-      : `<p class="prems-hint">Aucune demande envoyée.</p>`;
+          </div>`).join('');
+    const sentResolvedHtml = sentResolvedRecent.map(r=>{
+      const isNew = r.seenBySender === false;
+      const statusLabel = r.forcedByAdmin
+        ? (r.status === 'accepted'
+            ? `⚡ Validée de force par ${r.resolvedBy || 'un administrateur'}`
+            : `⚡ Refusée par ${r.resolvedBy || 'un administrateur'}`)
+        : (r.status === 'accepted'
+            ? `✅ Acceptée par ${r.toName}`
+            : `❌ Refusée par ${r.toName}`);
+      return `<div class="prems-swap-item${isNew ? ' prems-swap-item-new' : ''}">
+            Ton créneau <em>${r.fromLabel}</em> contre <em>${r.toLabel}</em> avec <strong>${r.toName}</strong> — ${statusLabel}${isNew ? ' <span class="prems-partial-pill">nouveau</span>' : ''}
+          </div>`;
+    }).join('');
+    const sentHtml = (sentPendingHtml || sentResolvedHtml) ? (sentPendingHtml + sentResolvedHtml) : `<p class="prems-hint">Aucune demande envoyée.</p>`;
 
     modalLayer.innerHTML = `
       <div class="prems-modal-backdrop" id="prems-modal-backdrop">
@@ -2108,29 +2536,92 @@
         await saveSwapRequests(list);
         setStatus("Demande annulée.", "ok");
         closeModal();
+        updateSwapBadge();
       });
     });
+
+    // Marque comme vues les réponses fraîchement affichées, pour qu'elles
+    // arrêtent de compter dans le badge du bouton une fois consultées.
+    const idsToMark = new Set([
+      ...sentResolvedRecent.filter(r=>r.seenBySender===false).map(r=>r.id),
+      ...receivedResolvedRecent.map(r=>r.id)
+    ]);
+    if(idsToMark.size){
+      const updated = all.map(r=>{
+        if(!idsToMark.has(r.id)) return r;
+        const patch = {};
+        if(sentResolvedRecent.some(x=>x.id===r.id)) patch.seenBySender = true;
+        if(receivedResolvedRecent.some(x=>x.id===r.id)) patch.seenByRecipient = true;
+        return { ...r, ...patch };
+      });
+      saveSwapRequests(updated).then(updateSwapBadge);
+    }
   }
 
   document.getElementById('prems-swap-btn').addEventListener('click', openSwapListModal);
 
   // ============================================================
-  // Créneaux favoris
+  // Créneaux favoris (limités à MAX_FAVORITES pour rester des vrais
+  // "habituels" — avant, ça sauvegardait tous les créneaux de la semaine
+  // sans limite, ce qui n'avait plus grand sens si on en avait beaucoup)
   // ============================================================
-  document.getElementById('prems-fav-save').addEventListener('click', async ()=>{
+  const MAX_FAVORITES = 2;
+
+  document.getElementById('prems-fav-save').addEventListener('click', ()=>{
     const me = recruiterSelect.value;
     if(!me){ setStatus("Sélectionne d'abord ton nom.", "err"); return; }
-    const favs = [];
+    const mySlots = [];
     DAYS.forEach(d=> SLOTS.forEach(s=>{
       const list = planning[`${d}-${s.idx}`] || [];
-      if(list.some(a=>a.titulaire===me)) favs.push({ day:d, slot:s.idx });
+      if(list.some(a=>a.titulaire===me)) mySlots.push({ day:d, slot:s.idx, label:`${d} ${s.label}` });
     }));
-    if(!favs.length){ setStatus("Tu n'as aucun créneau cette semaine à sauvegarder comme favori.", "err"); return; }
-    try{
-      await fbSet(`favorites-${me}`, favs);
-      setStatus(`${favs.length} créneau(x) sauvegardé(s) comme favoris.`, "ok");
-    }catch(e){ console.error(e); setStatus("Échec de la sauvegarde des favoris.", "err"); }
+    if(!mySlots.length){ setStatus("Tu n'as aucun créneau cette semaine à sauvegarder comme favori.", "err"); return; }
+    openFavoritesPickerModal(me, mySlots);
   });
+
+  function openFavoritesPickerModal(me, mySlots){
+    const rows = mySlots.map((s,i)=>`
+      <label class="prems-hint" style="display:flex; align-items:center; gap:8px; padding:4px 0;">
+        <input type="checkbox" data-fav-idx="${i}" ${i < MAX_FAVORITES ? 'checked' : ''}> ${s.label}
+      </label>`).join('');
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:420px;">
+          <h3>⭐ Choisir mes favoris</h3>
+          <p class="sub">Maximum ${MAX_FAVORITES} créneaux favoris — choisis ceux que tu reprends d'habitude. <span id="prems-fav-count"></span></p>
+          <div style="max-height:280px; overflow:auto;">${rows}</div>
+          <div class="actions" style="margin-top:12px;">
+            <button class="prems-btn" data-action="save-favs">Enregistrer</button>
+            <button class="prems-btn ghost" data-action="close">Annuler</button>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+
+    const checkboxes = Array.from(modalLayer.querySelectorAll('[data-fav-idx]'));
+    const countEl = document.getElementById('prems-fav-count');
+    function refreshFavCount(){
+      const checkedCount = checkboxes.filter(c=>c.checked).length;
+      countEl.textContent = `(${checkedCount}/${MAX_FAVORITES} sélectionné${checkedCount>1?'s':''})`;
+      // Une fois la limite atteinte, on désactive les cases non cochées
+      // plutôt que de laisser cocher puis rejeter — plus clair que de
+      // découvrir la limite après coup.
+      checkboxes.forEach(c=>{ if(!c.checked) c.disabled = checkedCount >= MAX_FAVORITES; });
+    }
+    checkboxes.forEach(c=> c.addEventListener('change', refreshFavCount));
+    refreshFavCount();
+
+    modalLayer.querySelector('[data-action="save-favs"]').addEventListener('click', async ()=>{
+      const chosen = checkboxes.filter(c=>c.checked).map(c=> mySlots[Number(c.dataset.favIdx)]).map(s=>({ day:s.day, slot:s.slot }));
+      if(!chosen.length){ setStatus("Choisis au moins un créneau.", "err"); return; }
+      try{
+        await fbSet(`favorites-${me}`, chosen);
+        setStatus(`${chosen.length} créneau(x) sauvegardé(s) comme favoris.`, "ok");
+      }catch(e){ console.error(e); setStatus("Échec de la sauvegarde des favoris.", "err"); }
+      closeModal();
+    });
+  }
 
   document.getElementById('prems-fav-apply').addEventListener('click', async ()=>{
     const me = recruiterSelect.value;
@@ -2138,6 +2629,7 @@
     let favs = [];
     try{ favs = (await fbGet(`favorites-${me}`)) || []; }catch(e){ console.error(e); }
     if(!favs.length){ setStatus("Tu n'as pas encore de créneaux favoris sauvegardés.", "err"); return; }
+    favs = favs.slice(0, MAX_FAVORITES); // sécurité si d'anciens favoris (sauvegardés avant cette limite) en contenaient plus
     let applied = 0, skippedTaken = 0, skippedMax = 0;
     favs.forEach(f=>{
       const key = `${f.day}-${f.slot}`;
@@ -2302,6 +2794,23 @@
     let filled = 0;
     DAYS.forEach(d=> SLOTS.forEach(s=>{ if((planning[`${d}-${s.idx}`]||[]).length) filled++; }));
     adminStatsEl.textContent = `${filled}/${total} créneaux couverts — ${total-filled} vide(s) — ${Object.keys(absences).length} absent(s) cette semaine`;
+    const missingBadge = document.getElementById('prems-missing-badge');
+    if(missingBadge){
+      const missingCount = computeMissingRecruiters().length;
+      missingBadge.textContent = missingCount > 9 ? '9+' : String(missingCount);
+      missingBadge.style.display = missingCount > 0 ? 'flex' : 'none';
+      missingBadge.style.alignItems = 'center';
+      missingBadge.style.justifyContent = 'center';
+    }
+    updatePriorityBadge();
+    const swapsBadge = document.getElementById('prems-admin-swaps-badge');
+    if(swapsBadge){
+      const pendingSwaps = swapRequestsCache.filter(r=>r.status==='pending').length;
+      swapsBadge.textContent = pendingSwaps > 9 ? '9+' : String(pendingSwaps);
+      swapsBadge.style.display = pendingSwaps > 0 ? 'flex' : 'none';
+      swapsBadge.style.alignItems = 'center';
+      swapsBadge.style.justifyContent = 'center';
+    }
   }
 
   // --- Qui n'a rien pris cette semaine ---
@@ -2328,6 +2837,142 @@
     document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
     modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
   });
+
+  // --- Validation des demandes de priorité par un administrateur ------------
+  // Avant : la priorité s'appliquait tout de suite si l'écart de charge était
+  // suffisant. Maintenant : ça part comme une demande, et c'est un admin qui
+  // valide ou refuse (avec re-vérification des règles au moment de valider,
+  // car la situation a pu changer entre-temps).
+  document.getElementById('prems-admin-priority').addEventListener('click', ()=>{
+    if(!isAdmin) return;
+    openPriorityRequestsModal();
+  });
+
+  function openPriorityRequestsModal(){
+    const pending = priorityRequests.filter(r=>r.status==='pending');
+    const rows = pending.length
+      ? pending.map(r=>`
+          <div class="prems-swap-item">
+            <strong>${r.requesterName}</strong> demande la priorité sur <em>${r.day} ${r.slotLabel}</em> à la place de <strong>${r.targetName}</strong>
+            (${r.requesterName} : ${r.myTotal} créneau${r.myTotal>1?'x':''} vs ${r.targetName} : ${r.theirTotal} cette semaine).
+            <div class="row">
+              <button class="prems-btn small" data-approve="${r.id}">✅ Valider</button>
+              <button class="prems-btn ghost small" data-reject="${r.id}">❌ Refuser</button>
+            </div>
+          </div>`).join('')
+      : `<p class="prems-hint">Aucune demande de priorité en attente.</p>`;
+
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:480px;">
+          <h3>⚖️ Demandes de priorité en attente</h3>
+          <p class="sub">Une validation déplace la personne actuelle de son créneau — vérifie que ça reste pertinent avant de confirmer.</p>
+          <div style="max-height:340px; overflow:auto;">${rows}</div>
+          <div class="actions" style="margin-top:12px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        </div>
+      </div>`;
+
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+    modalLayer.querySelectorAll('[data-approve]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{ await resolvePriorityRequest(btn.dataset.approve, true); openPriorityRequestsModal(); });
+    });
+    modalLayer.querySelectorAll('[data-reject]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{ await resolvePriorityRequest(btn.dataset.reject, false); openPriorityRequestsModal(); });
+    });
+  }
+
+  async function resolvePriorityRequest(id, approve){
+    if(!isAdmin) return;
+    let list = await loadPriorityRequests();
+    const idx = list.findIndex(r=>r.id===id);
+    if(idx === -1){ updatePriorityBadge(); return; }
+    const req = list[idx];
+    if(approve){
+      // Re-vérification des règles au moment de valider : la situation a pu
+      // changer depuis la demande (créneau déjà réattribué, suppléant ajouté,
+      // seuil de fatigue dépassé entre-temps, etc.).
+      const targetList = planning[req.key] || [];
+      const target = targetList.find(a=>a.titulaire===req.targetName);
+      const requesterFatigue = maxConsecutiveForName(req.day, req.requesterName, req.slotIdx);
+      if(!target || target.suppleant){
+        setStatus(`Impossible de valider : ${req.targetName} n'est plus seul(e) titulaire de ce créneau (situation changée entre-temps).`, "err");
+        list[idx] = { ...req, status:'rejected', resolvedAt:new Date().toISOString(), resolvedBy:currentAdminName, seenByRequester:false };
+      } else if(countSameSlotDays(req.requesterName, req.slotIdx, null) >= MAX_SAME_SLOT_PER_WEEK){
+        setStatus(`Impossible de valider : ${req.requesterName} a déjà atteint la limite de ${MAX_SAME_SLOT_PER_WEEK} jours sur cette tranche.`, "err");
+        list[idx] = { ...req, status:'rejected', resolvedAt:new Date().toISOString(), resolvedBy:currentAdminName, seenByRequester:false };
+      } else if(requesterFatigue > fatigueThreshold){
+        setStatus(`Impossible de valider : ${req.requesterName} dépasserait le seuil de créneaux d'affilée (${fatigueThreshold}).`, "err");
+        list[idx] = { ...req, status:'rejected', resolvedAt:new Date().toISOString(), resolvedBy:currentAdminName, seenByRequester:false };
+      } else {
+        planning[req.key] = targetList.map(a=> a.titulaire===req.targetName ? { titulaire:req.requesterName, suppleant:null, partial:null, oral:false } : a);
+        await savePlanning();
+        renderAll();
+        list[idx] = { ...req, status:'approved', resolvedAt:new Date().toISOString(), resolvedBy:currentAdminName, seenByRequester:false };
+        logAction(currentAdminName, "a validé une demande de priorité", `${req.requesterName} à la place de ${req.targetName} — ${req.day} ${req.slotLabel}`);
+        setStatus("Demande de priorité validée — le créneau a été réattribué.", "ok");
+      }
+    } else {
+      list[idx] = { ...req, status:'rejected', resolvedAt:new Date().toISOString(), resolvedBy:currentAdminName, seenByRequester:false };
+      logAction(currentAdminName, "a refusé une demande de priorité", `${req.requesterName} à la place de ${req.targetName} — ${req.day} ${req.slotLabel}`);
+      setStatus("Demande de priorité refusée.", "ok");
+    }
+    await savePriorityRequests(list);
+    updatePriorityBadge();
+  }
+
+  // --- Validation forcée des échanges de créneaux par un administrateur -----
+  // Avant : seule la personne visée par la demande (toName) pouvait
+  // accepter/refuser. Un administrateur peut maintenant trancher à sa place
+  // (utile si la personne ne répond pas ou est indisponible), en réutilisant
+  // la même logique que respondSwap (donc les mêmes garde-fous : le créneau
+  // doit toujours exister tel quel au moment de la validation).
+  document.getElementById('prems-admin-swaps').addEventListener('click', ()=>{
+    if(!isAdmin) return;
+    openAdminSwapsModal();
+  });
+
+  async function openAdminSwapsModal(){
+    let all = [];
+    try{ all = await loadSwapRequests(); }catch(e){ console.error(e); }
+    swapRequestsCache = all;
+    const pending = all.filter(r=>r.status==='pending');
+    const rows = pending.length
+      ? pending.map(r=>`
+          <div class="prems-swap-item">
+            <strong>${r.fromName}</strong> propose à <strong>${r.toName}</strong> : ${r.fromLabel} contre ${r.toLabel}.
+            <div class="row">
+              <button class="prems-btn small" data-force-approve="${r.id}">⚡ Valider de force</button>
+              <button class="prems-btn ghost small" data-force-reject="${r.id}">❌ Refuser</button>
+            </div>
+          </div>`).join('')
+      : `<p class="prems-hint">Aucun échange en attente.</p>`;
+
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:480px;">
+          <h3>🔄 Échanges en attente (tous)</h3>
+          <p class="sub">Vue admin sur toutes les demandes d'échange en attente, quel que soit qui les a proposées. Une validation forcée applique l'échange sans attendre la réponse de la personne visée.</p>
+          <div style="max-height:340px; overflow:auto;">${rows}</div>
+          <div class="actions" style="margin-top:12px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        </div>
+      </div>`;
+
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+    modalLayer.querySelectorAll('[data-force-approve]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const req = pending.find(r=>r.id===btn.dataset.forceApprove);
+        if(req){ await respondSwap(req, true, true); openAdminSwapsModal(); }
+      });
+    });
+    modalLayer.querySelectorAll('[data-force-reject]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const req = pending.find(r=>r.id===btn.dataset.forceReject);
+        if(req){ await respondSwap(req, false, true); openAdminSwapsModal(); }
+      });
+    });
+  }
 
   // --- Historique des semaines passées (lecture seule) ---
   function renderReadOnlyWeekHtml(p, a){
@@ -2386,30 +3031,60 @@
     }
   });
 
-  // --- Journal des actions admin ---
+  // --- Journal des actions (admin + recruteurs) ---
   adminLogBtn.addEventListener('click', async ()=>{
     if(!isAdmin) return;
-    let logs = [];
-    try{ logs = (await fbGet('admin-logs')) || []; }catch(e){ console.error(e); }
-    logs = logs.slice().reverse().slice(0,100);
-    const rows = logs.length
-      ? logs.map(l=>{
+    let logsObj = {};
+    try{ logsObj = (await fbGet('admin-logs')) || {}; }catch(e){ console.error(e); }
+    // Les clés Firebase (push-ids) sont lexicographiquement triables par date de
+    // création : trier dessus donne déjà l'ordre chronologique, sans dépendre
+    // uniquement du champ ts (qui vient de l'horloge du client).
+    const entries = Object.entries(logsObj).sort((a,b)=> b[0].localeCompare(a[0])).slice(0,200);
+    // Repère "dernière consultation" gardé localement dans CE navigateur (pas
+    // partagé) — permet de surligner ce qui est arrivé depuis ta dernière
+    // ouverture du journal, sans avoir à tout relire pour repérer la nouveauté.
+    let lastSeenLogId = "";
+    try{ lastSeenLogId = localStorage.getItem('prems-log-last-seen') || ""; }catch(e){}
+    const rows = entries.length
+      ? entries.map(([id,l])=>{
           const d = new Date(l.ts);
           const dateStr = d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}) + ' ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-          return `${dateStr} — <strong>${l.name}</strong> : ${l.action}${l.detail ? ` (${l.detail})` : ''}`;
-        }).join('<br>')
+          const lateBit = l.late ? ` <span class="prems-fatigue-pill" title="Créneau pris après son heure de début">⏰ tardif</span>` : '';
+          const isNew = id > lastSeenLogId;
+          return `<div class="prems-log-entry${isNew ? ' prems-log-entry-new' : ''}">${dateStr} — <strong>${l.name}</strong> : ${l.action}${l.detail ? ` (${l.detail})` : ''}${lateBit}${isNew ? ' <span class="prems-partial-pill">nouveau</span>' : ''}</div>`;
+        }).join('')
       : "Aucune action enregistrée pour l'instant.";
     modalLayer.innerHTML = `
       <div class="prems-modal-backdrop" id="prems-modal-backdrop">
-        <div class="prems-modal" style="max-width:480px;">
-          <h3>Journal des actions admin</h3>
-          <p class="sub">100 dernières actions, les plus récentes en premier.</p>
-          <div class="occ-list" style="max-height:320px; overflow:auto;">${rows}</div>
-          <div class="actions" style="margin-top:12px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        <div class="prems-modal" style="max-width:520px;">
+          <h3>Journal des actions</h3>
+          <p class="sub">200 dernières actions (admin + recruteurs), les plus récentes en premier. Surlignées : celles apparues depuis ta dernière consultation.</p>
+          <div class="occ-list" style="max-height:340px; overflow:auto;">${rows}</div>
+          <div class="actions" style="margin-top:12px;">
+            <button class="prems-btn ghost small" data-action="purge">🧹 Purger les entrées de plus de 90 jours</button>
+            <button class="prems-btn ghost" data-action="close">Fermer</button>
+          </div>
         </div>
       </div>`;
+    // On marque tout comme vu dès l'ouverture — le but est juste de repérer la
+    // nouveauté d'une consultation à l'autre, pas de gérer un statut "lu/non lu" fin.
+    if(entries.length){
+      try{ localStorage.setItem('prems-log-last-seen', entries[0][0]); }catch(e){}
+    }
     document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
     modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+    modalLayer.querySelector('[data-action="purge"]').addEventListener('click', async ()=>{
+      if(!window.confirm("Supprimer définitivement les entrées du journal de plus de 90 jours ?")) return;
+      const cutoff = Date.now() - 90*24*3600*1000;
+      const kept = {};
+      Object.entries(logsObj).forEach(([id,l])=>{ if(new Date(l.ts).getTime() >= cutoff) kept[id] = l; });
+      try{
+        await fbSet('admin-logs', kept); // opération rare et volontaire : le risque de collision d'une réécriture complète est accepté ici
+        logAction(currentAdminName, "a purgé le journal des actions", "entrées de plus de 90 jours");
+        setStatus("Journal purgé.", "ok");
+      }catch(e){ setStatus("Échec de la purge du journal.", "err"); }
+      closeModal();
+    });
   });
 
   blinkToggleBtn.addEventListener('click', async ()=>{
@@ -2444,6 +3119,111 @@
     logAdminAction("a modifié le seuil d'alerte fatigue", `${val} créneaux d'affilée (${val*2}h)`);
     setStatus(`Seuil de fatigue mis à jour : ${val} créneaux d'affilée (${val*2}h) — au-delà, la prise du créneau est bloquée.`, "ok");
   });
+
+  // --- Panneau admin : gestion des grades --------------------------------
+  // Avant : GRADE_LABEL/GRADE_COLOR étaient figés en dur dans le code. Ici,
+  // un brouillon local (draftGrades) est édité dans la modale et n'écrase
+  // GRADES / Firebase qu'au clic sur "Enregistrer" — annuler/fermer la
+  // modale ne modifie donc rien tant que ce n'est pas confirmé.
+  document.getElementById('prems-admin-grades').addEventListener('click', ()=>{
+    if(!isAdmin) return;
+    openGradesModal(JSON.parse(JSON.stringify(GRADES)));
+  });
+
+  function gradesInUseCounts(){
+    const counts = {};
+    recruiters.forEach(r=>{ counts[r.grade] = (counts[r.grade]||0) + 1; });
+    return counts;
+  }
+
+  function openGradesModal(draftGrades){
+    const inUse = gradesInUseCounts();
+    const rows = Object.entries(draftGrades).map(([code, g])=>{
+      const usedCount = inUse[code] || 0;
+      return `
+        <tr>
+          <td class="mono">${code}</td>
+          <td><input class="prems-input" data-grade-label="${code}" value="${g.label}" style="width:100%;"></td>
+          <td><input type="color" data-grade-color="${code}" value="${/^#/.test(g.color) ? g.color : '#e2574c'}"></td>
+          <td>${usedCount ? `${usedCount} recruteur(s)` : '—'}</td>
+          <td><button class="prems-btn ghost small" data-action="remove-grade" data-code="${code}" ${usedCount ? 'disabled title="Grade encore utilisé — réaffecte ces recruteurs avant de le retirer"' : ''}>✕</button></td>
+        </tr>`;
+    }).join('');
+
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:580px;">
+          <h3>🎓 Gérer les grades</h3>
+          <p class="sub">S'applique à toute l'équipe dès l'enregistrement. Un grade encore utilisé par un recruteur ne peut pas être retiré (réaffecte-le·s d'abord via "✎" sur son chip).</p>
+          <div style="max-height:280px; overflow:auto;">
+            <table class="prems-recap-table">
+              <thead><tr><th>Code</th><th>Libellé</th><th>Couleur</th><th>Utilisé par</th><th></th></tr></thead>
+              <tbody>${rows || '<tr><td colspan="5">Aucun grade configuré.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div class="row" style="display:flex; gap:6px; margin-top:12px; flex-wrap:wrap; align-items:center;">
+            <input class="prems-input" id="prems-new-grade-code" placeholder="Code (ex: PSY)" style="width:90px; text-transform:uppercase;" maxlength="6">
+            <input class="prems-input" id="prems-new-grade-label" placeholder="Libellé (ex: Psychologue)" style="flex:1; min-width:140px;">
+            <input type="color" id="prems-new-grade-color" value="#4ea8de">
+            <button class="prems-btn ghost small" data-action="add-grade">+ Ajouter</button>
+          </div>
+          <p class="prems-hint" id="prems-grades-hint"></p>
+          <div class="actions" style="margin-top:12px;">
+            <button class="prems-btn" data-action="save-grades">💾 Enregistrer</button>
+            <button class="prems-btn ghost" data-action="close">Annuler</button>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+
+    modalLayer.querySelectorAll('[data-action="remove-grade"]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if(btn.disabled) return;
+        delete draftGrades[btn.dataset.code];
+        openGradesModal(draftGrades);
+      });
+    });
+
+    modalLayer.querySelector('[data-action="add-grade"]').addEventListener('click', ()=>{
+      const codeInput = document.getElementById('prems-new-grade-code');
+      const labelInput = document.getElementById('prems-new-grade-label');
+      const colorInput = document.getElementById('prems-new-grade-color');
+      const hint = document.getElementById('prems-grades-hint');
+      const code = codeInput.value.trim().toUpperCase();
+      const label = labelInput.value.trim();
+      if(!/^[A-Z0-9]{1,6}$/.test(code)){ hint.textContent = "Code invalide (1 à 6 lettres/chiffres, ex : PSY)."; return; }
+      if(draftGrades[code]){ hint.textContent = "Ce code existe déjà."; return; }
+      if(!label){ hint.textContent = "Entre un libellé."; return; }
+      draftGrades[code] = { label, color: colorInput.value };
+      openGradesModal(draftGrades);
+    });
+
+    modalLayer.querySelector('[data-action="save-grades"]').addEventListener('click', async ()=>{
+      // Récupère les libellés/couleurs édités inline avant d'enregistrer.
+      Object.keys(draftGrades).forEach(code=>{
+        const labelEl = modalLayer.querySelector(`[data-grade-label="${code}"]`);
+        const colorEl = modalLayer.querySelector(`[data-grade-color="${code}"]`);
+        if(labelEl && labelEl.value.trim()) draftGrades[code].label = labelEl.value.trim();
+        if(colorEl && colorEl.value) draftGrades[code].color = colorEl.value;
+      });
+      if(!Object.keys(draftGrades).length){ setStatus("Il faut garder au moins un grade.", "err"); return; }
+      try{
+        await fbSet('grades-config', draftGrades);
+      }catch(e){
+        console.error(e);
+        setStatus("Échec de l'enregistrement des grades.", "err");
+        return;
+      }
+      GRADES = draftGrades;
+      rebuildGradeViews();
+      renderAll();
+      logAction(currentAdminName, "a modifié la configuration des grades");
+      setStatus("Grades mis à jour pour toute l'équipe.", "ok");
+      closeModal();
+    });
+  }
 
   function buildPlanningText(){
     const lines = [`Planning recrutement — semaine du ${fmtDate(monday)} au ${fmtDate(sunday)}`, ''];
@@ -2566,12 +3346,15 @@
     updateLiveIndicator();
     computeRecommendationsFor(me);
     savePlanning();
+    logAction(me, "a effacé tous ses créneaux de la semaine");
   });
 
   recruiterSelect.addEventListener('change', ()=>{
     syncAbsentToggle();
     checkMyUpcomingSlotReminder();
     computeRecommendationsFor(recruiterSelect.value);
+    updateSwapBadge();
+    renderLegend();
   });
 
   absentToggle.addEventListener('change', ()=>{
@@ -2582,6 +3365,7 @@
     renderLegend();
     renderTable();
     saveAbsences();
+    logAction(me, absentToggle.checked ? "s'est déclaré(e) absent(e)" : "a retiré sa déclaration d'absence");
   });
 
   // --- Bouton mobile "Plus d'actions" : replie/déplie les actions secondaires ---
@@ -2596,11 +3380,13 @@
   }
 
   setAdminUI();
-  loadAll();
+  initFirebaseAuth().finally(()=> loadAll().then(updateSwapBadge));
   setInterval(()=>{ renderTable(); updateLiveIndicator(); }, 60000);
   // Recharge les données partagées toutes les 15s pour voir les changements des collègues
   setInterval(()=>{ loadAll(true); }, 15000);
   // Vérifie toutes les 20s si le créneau de l'utilisateur approche (rappel personnel)
   setInterval(checkMyUpcomingSlotReminder, 20000);
+  // Vérifie toutes les 15s si de nouvelles demandes d'échange sont arrivées (badge sur le bouton)
+  setInterval(updateSwapBadge, 15000);
 })();
 </script>
