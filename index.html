@@ -522,6 +522,10 @@
         <span class="prems-hint">Je remplis le planning en tant que :</span>
         <select class="prems-select" id="prems-current-recruiter" style="min-width:200px;"></select>
         <span class="prems-hint" id="prems-identity-lock" style="display:none;" title="Ton identité est déterminée automatiquement par ton compte Base44 — impossible de changer pour quelqu'un d'autre.">🔒 Identité vérifiée via Base44</span>
+        <span class="prems-hint" id="prems-identity-required" style="display:none;" title="Connecte-toi avec ton e-mail pour pouvoir choisir un profil et modifier le planning.">🔒 Connecte-toi pour choisir ton profil</span>
+        <input class="prems-input" id="prems-manual-email-input" type="email" placeholder="ton-email@exemple.com" style="min-width:190px;" title="En attendant que Base44 transmette l'e-mail automatiquement, tu peux le saisir ici toi-même">
+        <button class="prems-btn ghost small" id="prems-manual-email-login" title="Se connecter avec cet e-mail (comme le fera Base44 automatiquement plus tard)">🔐 Se connecter</button>
+        <button class="prems-btn ghost small" id="prems-manual-email-logout" style="display:none;" title="Revenir à la sélection manuelle du nom">🔓 Se déconnecter</button>
         <label class="prems-absent-toggle" id="prems-absent-label">
           <input type="checkbox" id="prems-absent-toggle">
           Absent(e) cette semaine
@@ -728,10 +732,10 @@
   // de ce fichier, dans le commentaire "RÈGLES FIREBASE À COLLER".
   // ============================================================
   const FIREBASE_CONFIG = {
-    apiKey: "COLLE_TA_CLE_API_FIREBASE_ICI",
-    authDomain: "COLLE_TON_AUTH_DOMAIN_ICI", // ex: planning-recrutement.firebaseapp.com
+    apiKey: "AIzaSyC_u8dt0-cu5WcJJCYqPoz1vcaWhO5a0_k",
+    authDomain: "planning-recrutement.firebaseapp.com",
     databaseURL: FIREBASE_URL,
-    projectId: "COLLE_TON_PROJECT_ID_ICI",
+    projectId: "planning-recrutement",
   };
 
   // --- Suivi de la connexion à Firebase ---
@@ -792,6 +796,12 @@
       await loadFirebaseSdk();
       if(!window.firebase.apps.length) window.firebase.initializeApp(FIREBASE_CONFIG);
       await window.firebase.auth().signInAnonymously();
+      // Important : on récupère le jeton tout de suite, ici, avant de
+      // continuer — sinon les toutes premières écritures (juste après le
+      // chargement) partent sans jeton et sont refusées par les règles
+      // Firebase, le temps que le callback onIdTokenChanged se déclenche.
+      const currentUser = window.firebase.auth().currentUser;
+      if(currentUser) authIdToken = await currentUser.getIdToken();
       window.firebase.auth().onIdTokenChanged(async (user)=>{
         try{ authIdToken = user ? await user.getIdToken() : null; }catch(e){ authIdToken = null; }
       });
@@ -839,6 +849,31 @@
       throw e;
     }
   }
+  // --- Encodage des e-mails en clés Firebase valides -------------------------
+  // Firebase Realtime Database interdit les caractères . $ # [ ] / dans les
+  // clés. Or une adresse e-mail contient toujours au moins un point, donc
+  // l'utiliser telle quelle comme clé fait échouer l'écriture avec un 400.
+  // On encode/décode uniquement à la frontière avec Firebase ; partout
+  // ailleurs dans le code, emailMapping reste indexé par e-mail brut.
+  const FB_KEY_ESCAPES = { '.': '%2E', '#': '%23', '$': '%24', '[': '%5B', ']': '%5D', '/': '%2F' };
+  const FB_KEY_UNESCAPES = { '%2E': '.', '%23': '#', '%24': '$', '%5B': '[', '%5D': ']', '%2F': '/' };
+  function emailToFbKey(email){
+    return email.replace(/[.#$\[\]\/]/g, ch => FB_KEY_ESCAPES[ch]);
+  }
+  function fbKeyToEmail(key){
+    return key.replace(/%2E|%23|%24|%5B|%5D|%2F/g, m => FB_KEY_UNESCAPES[m]);
+  }
+  function encodeEmailMapping(mapping){
+    const out = {};
+    Object.entries(mapping).forEach(([email, name])=>{ out[emailToFbKey(email)] = name; });
+    return out;
+  }
+  function decodeEmailMapping(mapping){
+    const out = {};
+    Object.entries(mapping).forEach(([key, name])=>{ out[fbKeyToEmail(key)] = name; });
+    return out;
+  }
+
   // Écriture "additive" (équivalent du push() du SDK Firebase) : génère une
   // clé unique côté serveur au lieu d'écraser toute la valeur existante.
   // Utilisé pour le journal d'actions, pour ne plus jamais perdre une entrée
@@ -918,6 +953,22 @@
   let unavailExceptions = {};    // { "Nom": [{day,slot}, ...] } — exceptions ponctuelles à ces indispos, valables SEULEMENT pour la semaine en cours
   // Intégration Base44 : associe un e-mail connu à un recruteur existant.
   // { "email@exemple.com": "Nom du recruteur" }
+  // E-mails déjà connus, en dur ici pour que ça marche tout de suite (même
+  // avant que l'écriture Firebase soit opérationnelle). Une fois l'écriture
+  // Firebase active, tout ce qui est ajouté/modifié via "📧 Table des
+  // e-mails" prime sur ces valeurs par défaut (fusion : Firebase d'abord,
+  // valeurs ci-dessous en repli pour les e-mails pas encore connus de Firebase).
+  const DEFAULT_EMAIL_MAPPING = {
+    "leypierce22@gmail.com": "Leyah Pierce",
+    "tiomicroman@gmail.com": "Tio War",
+    "cloecosta828@gmail.com": "Cloé White",
+    "thibautestbeau@gmail.com": "Aaron Stopenski",
+    "bfoure16@gmail.com": "Baptiste Fore",
+    "fuyz@outlook.fr": "Yanis Bou",
+    "rayancourtil244@gmail.com": "Ibra Salvatore",
+    "rayan.mobarki@hotmail.com": "Moussa Sako",
+    "fratearmani@gmail.com": "Yoda",
+  };
   let emailMapping = {};
   let base44LockedIdentity = null; // nom du recruteur verrouillé si connecté via Base44, sinon null
   let rsvpConfirmations = {}; // { "Jeudi-4|Yoda": true } — confirmations "je serai là demain", par semaine
@@ -1564,6 +1615,7 @@
       ? recruiters.map(r=>`<option value="${r.name}">${r.name} (${r.grade})</option>`).join('')
       : `<option value="">Aucun recruteur ajouté</option>`;
     if(recruiters.some(r=>r.name===prev)) recruiterSelect.value = prev;
+    updateRecruiterSelectLock();
     syncAbsentToggle();
   }
 
@@ -1571,6 +1623,40 @@
     const me = recruiterSelect.value;
     absentToggle.checked = !!(me && absences[me]);
     absentLabel.classList.toggle('is-absent', absentToggle.checked);
+  }
+
+  // Tant que personne n'est identifié(e) par e-mail (Base44 ou connexion
+  // manuelle/test) ET qu'on n'est pas admin, on bloque le choix d'un profil :
+  // impossible d'utiliser l'identité de quelqu'un d'autre sans s'être connecté.
+  function updateRecruiterSelectLock(){
+    const connected = !!base44LockedIdentity;
+    if(connected){
+      // Connecté(e) via e-mail (Base44 ou manuel) : toujours verrouillé sur sa
+      // propre identité, admin ou pas — pas d'usurpation possible d'un autre recruteur.
+      recruiterSelect.disabled = true;
+      const hintEl = document.getElementById('prems-identity-required');
+      if(hintEl) hintEl.style.display = 'none';
+      const placeholder = recruiterSelect.querySelector('option[value=""]');
+      if(placeholder) placeholder.remove();
+      return;
+    }
+    // Pas connecté(e) : seul un admin peut quand même choisir librement un
+    // profil (le temps que tout le monde ait son e-mail rattaché) ; sinon,
+    // impossible d'utiliser le profil de quelqu'un sans s'être connecté.
+    const locked = !isAdmin;
+    recruiterSelect.disabled = locked;
+    const hintEl = document.getElementById('prems-identity-required');
+    if(hintEl) hintEl.style.display = locked ? '' : 'none';
+    if(locked){
+      if(!recruiterSelect.querySelector('option[value=""]')){
+        recruiterSelect.insertAdjacentHTML('afterbegin', `<option value="">— Connecte-toi pour choisir —</option>`);
+      }
+      recruiterSelect.value = "";
+      syncAbsentToggle();
+    } else {
+      const placeholder = recruiterSelect.querySelector('option[value=""]');
+      if(placeholder) placeholder.remove();
+    }
   }
 
   function renderLegend(){
@@ -1614,6 +1700,8 @@
     adminBar.style.display = isAdmin ? 'flex' : 'none';
     adminToggleBtn.textContent = isAdmin ? '🔓 Mode administrateur (actif)' : '🔒 Mode administrateur';
     adminToggleBtn.classList.toggle('is-admin', isAdmin);
+    updateManualEmailLogoutVisibility();
+    updateRecruiterSelectLock();
     renderLegend();
     if(isAdmin) renderAdminStats();
   }
@@ -1787,7 +1875,10 @@
       try{ quotaRequests = (await fbGet('quota-requests')) || []; }catch(e){ console.error(e); quotaRequests = []; }
       try{ recurringUnavailable = (await fbGet('recurring-unavailable')) || {}; }catch(e){ console.error(e); recurringUnavailable = {}; }
       try{ unavailExceptions = (await fbGet(`unavail-exceptions-${weekKey}`)) || {}; }catch(e){ console.error(e); unavailExceptions = {}; }
-      try{ emailMapping = (await fbGet('email-role-mapping')) || {}; }catch(e){ console.error(e); emailMapping = {}; }
+      try{
+        const fbMapping = decodeEmailMapping((await fbGet('email-role-mapping')) || {});
+        emailMapping = { ...DEFAULT_EMAIL_MAPPING, ...fbMapping };
+      }catch(e){ console.error(e); emailMapping = { ...DEFAULT_EMAIL_MAPPING }; }
       try{ rsvpConfirmations = (await fbGet(`rsvp-${weekKey}`)) || {}; }catch(e){ console.error(e); rsvpConfirmations = {}; }
 
       try{
@@ -4058,7 +4149,71 @@
   //     possible qu'aucun des trois ne matche exactement — à ajuster une
   //     fois que c'est confirmé.
   // ============================================================
-  function detectBase44Email(){
+  // --- Connexion manuelle par e-mail (en attendant l'intégration Base44) ----
+  // Permet de tester (ou d'utiliser dès maintenant) tout le mécanisme
+  // e-mail → identité → admin auto, sans dépendre de Base44 pour transmettre
+  // l'e-mail. Stocké uniquement dans CE navigateur (localStorage) — chacun
+  // doit se reconnecter une fois sur son propre appareil.
+  const manualEmailInput = document.getElementById('prems-manual-email-input');
+  const manualEmailLoginBtn = document.getElementById('prems-manual-email-login');
+  const manualEmailLogoutBtn = document.getElementById('prems-manual-email-logout');
+  let base44IsAutoConnection = false; // true = vraie connexion Base44 (rien à déconnecter) ; false = connexion manuelle/test
+
+  function showManualEmailLoggedInUI(email, isAuto){
+    base44IsAutoConnection = !!isAuto;
+    if(manualEmailInput){ manualEmailInput.value = email; manualEmailInput.style.display = 'none'; }
+    if(manualEmailLoginBtn) manualEmailLoginBtn.style.display = 'none';
+    updateManualEmailLogoutVisibility();
+  }
+  // Le bouton "Se déconnecter" ne sert qu'à un admin qui a besoin de délier
+  // l'identité manuelle/test rattachée à CET appareil (ex : mauvais e-mail
+  // saisi par erreur). Un(e) simple recruteur(se) connecté(e) ne le voit
+  // jamais : sinon n'importe qui pourrait se déconnecter tout seul sur un
+  // poste partagé et se reconnecter avec l'e-mail de quelqu'un d'autre.
+  // Une vraie connexion Base44 (isAuto) n'affiche jamais ce bouton non plus,
+  // puisqu'il n'y a rien à annuler manuellement dans ce cas.
+  function updateManualEmailLogoutVisibility(){
+    if(!manualEmailLogoutBtn) return;
+    const shouldShow = !!base44LockedIdentity && !base44IsAutoConnection && isAdmin;
+    manualEmailLogoutBtn.style.display = shouldShow ? '' : 'none';
+  }
+  function showManualEmailLoggedOutUI(){
+    if(manualEmailInput){ manualEmailInput.value = ''; manualEmailInput.style.display = ''; }
+    if(manualEmailLoginBtn) manualEmailLoginBtn.style.display = '';
+    if(manualEmailLogoutBtn) manualEmailLogoutBtn.style.display = 'none';
+  }
+
+  if(manualEmailLoginBtn) manualEmailLoginBtn.addEventListener('click', async ()=>{
+    const email = (manualEmailInput.value || '').trim().toLowerCase();
+    if(!email){ setStatus("Entre d'abord un e-mail.", "err"); return; }
+    try{ localStorage.setItem('prems-manual-test-email', email); }catch(e){}
+    await applyBase44Identity(email, false);
+  });
+
+  if(manualEmailLogoutBtn) manualEmailLogoutBtn.addEventListener('click', ()=>{
+    if(!isAdmin) return; // sécurité supplémentaire : le bouton n'est de toute façon visible que pour un admin
+    const previousName = base44LockedIdentity;
+    try{ localStorage.removeItem('prems-manual-test-email'); }catch(e){}
+    base44LockedIdentity = null;
+    base44IsAutoConnection = false;
+    const lockEl = document.getElementById('prems-identity-lock');
+    if(lockEl) lockEl.style.display = 'none';
+    showManualEmailLoggedOutUI();
+    updateRecruiterSelectLock();
+    logAdminAction("a déconnecté l'identité liée à cet appareil", previousName || '');
+    setStatus("Identité déconnectée de cet appareil — la prochaine personne peut se connecter avec son e-mail.", "ok");
+  });
+
+  // Si un e-mail est déjà mémorisé dans ce navigateur, on affiche tout de
+  // suite l'état "connecté" (le vrai rattachement au recruteur se fait un
+  // peu plus bas, une fois les données chargées).
+  try{
+    if(localStorage.getItem('prems-manual-test-email')) showManualEmailLoggedInUI(localStorage.getItem('prems-manual-test-email'), false);
+  }catch(e){}
+
+  // Détection d'une VRAIE connexion Base44 (les 3 mécanismes possibles décrits
+  // plus haut). Si l'un d'eux répond, plus besoin du bouton manuel du tout.
+  function detectBase44AutoEmail(){
     try{ if(window.BASE44_USER_EMAIL) return String(window.BASE44_USER_EMAIL).trim().toLowerCase(); }catch(e){}
     try{
       const params = new URLSearchParams(window.location.search);
@@ -4068,11 +4223,26 @@
     return null;
   }
 
-  async function applyBase44Identity(email){
+  // En attendant que Base44 transmette vraiment l'e-mail, on regarde si la
+  // personne s'est connectée manuellement via "🔐 Se connecter" (stocké
+  // dans ce navigateur uniquement, persiste entre les rechargements).
+  function detectManualTestEmail(){
+    try{
+      const stored = localStorage.getItem('prems-manual-test-email');
+      if(stored) return stored.trim().toLowerCase();
+    }catch(e){}
+    return null;
+  }
+
+  async function applyBase44Identity(email, isAuto){
     if(!email) return;
     email = email.trim().toLowerCase();
     let mapping = emailMapping;
-    try{ mapping = (await fbGet('email-role-mapping')) || {}; emailMapping = mapping; }catch(e){ console.error(e); }
+    try{
+      const fbMapping = decodeEmailMapping((await fbGet('email-role-mapping')) || {});
+      mapping = { ...DEFAULT_EMAIL_MAPPING, ...fbMapping };
+      emailMapping = mapping;
+    }catch(e){ console.error(e); mapping = { ...DEFAULT_EMAIL_MAPPING, ...emailMapping }; }
     const name = mapping[email];
     if(!name){
       console.warn(`Base44 : e-mail "${email}" non reconnu dans la table de correspondance — connexion manuelle requise.`);
@@ -4081,13 +4251,15 @@
     }
     if(!recruiters.some(r=>r.name===name)){
       console.warn(`Base44 : ${name} (associé à ${email}) n'existe plus comme recruteur actif.`);
+      setStatus(`Ton e-mail (${email}) est associé à "${name}" dans la table, mais aucun recruteur actif ne porte exactement ce nom (vérifie l'orthographe/les espaces dans "🎓 Gérer les grades" ou la liste des recruteurs).`, "err");
       return;
     }
     recruiterSelect.value = name;
-    recruiterSelect.disabled = true; // identité verrouillée : pas d'usurpation possible d'un autre recruteur
     base44LockedIdentity = name;
+    updateRecruiterSelectLock(); // pas d'usurpation possible d'un autre recruteur : le select reste verrouillé sur son identité
     const lockEl = document.getElementById('prems-identity-lock');
     if(lockEl) lockEl.style.display = '';
+    showManualEmailLoggedInUI(email, !!isAuto);
     syncAbsentToggle();
     renderLegend();
     computeRecommendationsFor(name);
@@ -4111,7 +4283,7 @@
   // ce widget est chargé dans une iframe sur le site Base44 de Michel).
   window.addEventListener('message', (event)=>{
     if(event.data && event.data.type === 'base44-user' && event.data.email){
-      applyBase44Identity(event.data.email);
+      applyBase44Identity(event.data.email, true);
     }
   });
 
@@ -4193,7 +4365,7 @@
       Object.keys(emailMapping).forEach(email=>{ if(!(email in updated) && !entries.some(([e])=>e===email)) updated[email] = emailMapping[email]; });
       emailMapping = updated;
       try{
-        await fbSet('email-role-mapping', emailMapping);
+        await fbSet('email-role-mapping', encodeEmailMapping(emailMapping));
       }catch(e){
         console.error(e);
         setStatus("Échec de l'enregistrement de la table des e-mails.", "err");
@@ -4221,9 +4393,14 @@
     updateSwapBadge();
     updateOpenMarketBadge();
     checkUnavailRenewalBanner();
-    const base44Email = detectBase44Email();
-    if(base44Email) applyBase44Identity(base44Email);
-    else checkRsvpPrompts();
+    const autoEmail = detectBase44AutoEmail();
+    if(autoEmail){
+      applyBase44Identity(autoEmail, true);
+    } else {
+      const manualEmail = detectManualTestEmail();
+      if(manualEmail) applyBase44Identity(manualEmail, false);
+      else checkRsvpPrompts();
+    }
   }));
   setInterval(()=>{ renderTable(); updateLiveIndicator(); }, 60000);
   // Recharge les données partagées toutes les 15s pour voir les changements des collègues
