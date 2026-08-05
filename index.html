@@ -170,6 +170,18 @@
   table.prems-grid thead th.peak-col{ color:var(--accent); }
   table.prems-grid td.time-col.peak-col{ color:var(--accent); }
 
+  /* Créneau vidé en urgence (annulation de dernière minute sans suppléant) */
+  table.prems-grid td.slot.urgent-empty{ background:#e2574c26; animation:urgentPulse 1.4s infinite; }
+  table.prems-grid td.slot.urgent-empty .prems-empty-cell{ color:var(--accent); font-weight:800; }
+  @keyframes urgentPulse{ 0%,100%{ box-shadow:inset 0 0 0 1px #e2574c55; } 50%{ box-shadow:inset 0 0 0 2px #e2574caa; } }
+
+  /* Entretien oral programmé sur un créneau, posé par un administrateur
+     (indépendant de qui est titulaire du créneau) */
+  table.prems-grid td.slot.oral-slot::after{
+    content:"🎤"; position:absolute; top:2px; right:4px; font-size:11px; opacity:.85;
+  }
+  table.prems-grid td.slot{ position:relative; }
+
   /* Clignotement générique pour tout créneau vide (hors créneaux 🔥 qui ont déjà
      leur propre clignotement rouge plus fort). Désactivable par un administrateur
      via #prems-root.prems-no-blink. */
@@ -509,10 +521,13 @@
       <div class="prems-recruiter-panel">
         <span class="prems-hint">Je remplis le planning en tant que :</span>
         <select class="prems-select" id="prems-current-recruiter" style="min-width:200px;"></select>
+        <span class="prems-hint" id="prems-identity-lock" style="display:none;" title="Ton identité est déterminée automatiquement par ton compte Base44 — impossible de changer pour quelqu'un d'autre.">🔒 Identité vérifiée via Base44</span>
         <label class="prems-absent-toggle" id="prems-absent-label">
           <input type="checkbox" id="prems-absent-toggle">
           Absent(e) cette semaine
         </label>
+        <button class="prems-btn ghost small prems-mobile-secondary" id="prems-day-absence-btn" title="Se déclarer absent(e) seulement un ou plusieurs jours précis, sans bloquer toute la semaine">📅 Absence ponctuelle</button>
+        <button class="prems-btn ghost small prems-mobile-secondary" id="prems-recurring-unavail-btn" title="Marquer des créneaux où tu n'es jamais disponible (cours, impératif pro...), reconduits chaque semaine">🚫 Mes indispos récurrentes</button>
         <label class="prems-absent-toggle prems-mobile-secondary" id="prems-reminder-label" title="Recevoir un rappel quand ton créneau approche">
           <input type="checkbox" id="prems-reminder-toggle">
           🔔 Me rappeler avant mon créneau
@@ -525,6 +540,8 @@
         <button class="prems-btn ghost small prems-mobile-secondary" id="prems-fav-save" title="Choisir jusqu'à 2 créneaux à sauvegarder comme favoris">⭐ Sauver mes favoris</button>
         <button class="prems-btn ghost small prems-mobile-secondary" id="prems-fav-apply" title="Appliquer mes créneaux favoris à cette semaine">⚡ Appliquer mes favoris</button>
         <button class="prems-btn ghost small prems-mobile-secondary prems-btn-with-badge" id="prems-swap-btn" title="Voir/proposer des échanges de créneaux">🔄 Mes échanges<span class="prems-notif-badge" id="prems-swap-badge" style="display:none;">0</span></button>
+        <button class="prems-btn ghost small prems-mobile-secondary" id="prems-my-history-btn" title="Voir tes propres créneaux et absences des semaines passées">📊 Mon historique</button>
+        <button class="prems-btn ghost small prems-mobile-secondary prems-btn-with-badge" id="prems-open-market-btn" title="Échanges ouverts à tout le monde, sans cibler quelqu'un en particulier">🔓 Bourse d'échange<span class="prems-notif-badge" id="prems-open-market-badge" style="display:none;">0</span></button>
       </div>
       <div class="prems-mobile-secondary" style="display:flex; gap:8px; flex-wrap:wrap;">
         <div class="prems-export-group" style="display:flex; gap:8px;">
@@ -540,6 +557,13 @@
       <span class="dot"></span>
       <span id="prems-conn-banner-text">⚠️ Connexion perdue — tes modifications ne sont pas enregistrées. Nouvelle tentative en cours…</span>
     </div>
+    <div class="prems-conn-banner" id="prems-unavail-banner" style="display:none; background:var(--panel-2); border:1px solid var(--border); color:var(--text);">
+      <span id="prems-unavail-banner-text"></span>
+      <span style="display:flex; gap:6px; margin-left:auto;">
+        <button class="prems-btn small" id="prems-unavail-renew-yes">Oui, reconduire</button>
+        <button class="prems-btn ghost small" id="prems-unavail-renew-no">Non, dispo cette semaine</button>
+      </span>
+    </div>
 
     <div class="prems-admin-bar prems-mobile-secondary" id="prems-admin-bar" style="display:none;">
       <button class="prems-btn ghost small" id="prems-admin-copy">📋 Copier le planning (texte)</button>
@@ -549,6 +573,8 @@
       <button class="prems-btn ghost small prems-btn-with-badge" id="prems-admin-missing">📣 Qui n'a rien pris ?<span class="prems-notif-badge" id="prems-missing-badge" style="display:none;">0</span></button>
       <button class="prems-btn ghost small prems-btn-with-badge" id="prems-admin-priority">⚖️ Demandes de priorité<span class="prems-notif-badge" id="prems-priority-badge" style="display:none;">0</span></button>
       <button class="prems-btn ghost small prems-btn-with-badge" id="prems-admin-swaps">🔄 Échanges à valider<span class="prems-notif-badge" id="prems-admin-swaps-badge" style="display:none;">0</span></button>
+      <button class="prems-btn ghost small" id="prems-admin-emails">📧 Table des e-mails (Base44)</button>
+      <button class="prems-btn ghost small prems-btn-with-badge" id="prems-admin-quota">📩 Dérogations de quota<span class="prems-notif-badge" id="prems-quota-badge" style="display:none;">0</span></button>
       <button class="prems-btn ghost small" id="prems-admin-recap">📊 Récap créneaux</button>
       <button class="prems-btn ghost small" id="prems-admin-oral-stats">🎤 Entretiens oraux</button>
       <button class="prems-btn ghost small" id="prems-admin-history">🗂️ Historique des semaines</button>
@@ -883,7 +909,19 @@
 
   let recruiters = [];      // [{name, grade}]
   let planning = {};        // { "Lundi-0": [ {titulaire:"Nom", suppleant:"Nom2"|null}, ... ] }
-  let absences = {};        // { "Nom": true }
+  let absences = {};        // { "Nom": true } — absence pour TOUTE la semaine
+  let dayAbsences = {};      // { "Nom": { "Lundi": true } } — absence ponctuelle (un ou plusieurs jours précis)
+  let urgentSlots = {};      // { "Jeudi-4": {reason, by, ts} } — créneau vidé en urgence, à pourvoir en priorité
+  let oralSlots = {};        // { "Jeudi-4": true } — entretien oral programmé sur ce créneau (posé par un admin, indépendant des titulaires)
+  let quotaRequests = [];    // dérogations de quota demandées, cf. "📩 Dérogations de quota"
+  let recurringUnavailable = {}; // { "Nom": [{day,slot}, ...] } — indispos récurrentes (anti-favoris), valables toutes les semaines
+  let unavailExceptions = {};    // { "Nom": [{day,slot}, ...] } — exceptions ponctuelles à ces indispos, valables SEULEMENT pour la semaine en cours
+  // Intégration Base44 : associe un e-mail connu à un recruteur existant.
+  // { "email@exemple.com": "Nom du recruteur" }
+  let emailMapping = {};
+  let base44LockedIdentity = null; // nom du recruteur verrouillé si connecté via Base44, sinon null
+  let rsvpConfirmations = {}; // { "Jeudi-4|Yoda": true } — confirmations "je serai là demain", par semaine
+  const rsvpDismissedThisSession = new Set(); // évite de renaguer un rappel déjà vu (fermé) dans cette session
   let weekKey = "";
   let saving = false;
   let weekOverride = null;  // "YYYY-MM-DD" (lundi forcé par un admin), ou null = automatique
@@ -1092,6 +1130,17 @@
     return dt;
   }
 
+  // Empêche de retirer un créneau une fois qu'il est terminé — sinon on
+  // pourrait prendre 3 créneaux d'une tranche, attendre le soir, retirer un
+  // des créneaux déjà passés (ce qui libère artificiellement le compteur de
+  // jours), puis en reprendre un autre le même jour au-delà de la limite.
+  function isSlotFullyPast(day, slotIdx){
+    const dt = getSlotDateTime(DAYS.indexOf(day), slotIdx);
+    if(!dt) return false;
+    const endDt = new Date(dt.getTime() + 2*3600*1000); // créneaux de 2h
+    return new Date() > endDt;
+  }
+
   function playReminderBeep(){
     try{
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -1254,6 +1303,8 @@
         const isPeakEmpty = isPeak && !list.length;
         const isNextSlot = i===nextTarget.dayIdx && s.idx===nextTarget.slotIdx;
         const isReco = recoKeySet.has(key) && !list.length;
+        const isUrgentEmpty = !!urgentSlots[key] && !list.length;
+        const hasOralSlot = !!oralSlots[key];
         let content;
         if(list.length){
           content = `<div class="slot-stack">` + list.map(a=>{
@@ -1270,11 +1321,11 @@
             return `<span class="slot-chip" data-key="${key}|${a.titulaire}" style="background:${c}26; color:${c}; border:1px solid ${c}55;">${a.titulaire}${grade ? ` <span class="grade">${grade}</span>` : ''}${absentPill}${partialPill}${fatiguePill}${oralPill}</span>${supplBit ? `<span class="slot-chip" style="background:transparent;border:1px dashed ${c}55;color:${c};">${supplBit}</span>` : ''}`;
           }).join('') + `</div>`;
         } else {
-          content = `<span class="prems-empty-cell">${isPeakEmpty ? '⚠ vide' : (isReco ? '💡' : '+')}</span>`;
+          content = `<span class="prems-empty-cell">${isUrgentEmpty ? '⚠ URGENT : vide' : (isPeakEmpty ? '⚠ vide' : (isReco ? '💡' : '+'))}</span>`;
         }
         const isEmpty = isNextSlot && !list.length;
-        const titleAttr = isPeakEmpty ? 'Créneau à forte affluence encore vide' : (isReco ? 'Ton créneau habituel — recommandé pour toi' : (isEmpty ? 'Prochain créneau, encore vide' : ''));
-        tbody += `<td class="slot ${isNow ? 'now-col' : ''}${isPeakEmpty ? ' peak-empty' : ''}${isEmpty ? ' is-empty' : ''}${isReco ? ' prems-reco-cell' : ''}" data-day="${d}" data-slot="${s.idx}" title="${titleAttr}">${content}</td>`;
+        const titleAttr = isUrgentEmpty ? "Annulation de dernière minute — personne pour reprendre ce créneau" : (isPeakEmpty ? 'Créneau à forte affluence encore vide' : (isReco ? 'Ton créneau habituel — recommandé pour toi' : (isEmpty ? 'Prochain créneau, encore vide' : '')));
+        tbody += `<td class="slot ${isNow ? 'now-col' : ''}${isPeakEmpty ? ' peak-empty' : ''}${isEmpty ? ' is-empty' : ''}${isReco ? ' prems-reco-cell' : ''}${isUrgentEmpty ? ' urgent-empty' : ''}${hasOralSlot ? ' oral-slot' : ''}" data-day="${d}" data-slot="${s.idx}" title="${titleAttr}${hasOralSlot ? ' — entretien oral programmé' : ''}">${content}</td>`;
       });
       tbody += `</tr>`;
     });
@@ -1730,6 +1781,15 @@
         absences = a || {};
       }catch(e){ console.error(e); absences = {}; }
 
+      try{ dayAbsences = (await fbGet(`day-absences-${weekKey}`)) || {}; }catch(e){ console.error(e); dayAbsences = {}; }
+      try{ urgentSlots = (await fbGet(`urgent-slots-${weekKey}`)) || {}; }catch(e){ console.error(e); urgentSlots = {}; }
+      try{ oralSlots = (await fbGet(`oral-slots-${weekKey}`)) || {}; }catch(e){ console.error(e); oralSlots = {}; }
+      try{ quotaRequests = (await fbGet('quota-requests')) || []; }catch(e){ console.error(e); quotaRequests = []; }
+      try{ recurringUnavailable = (await fbGet('recurring-unavailable')) || {}; }catch(e){ console.error(e); recurringUnavailable = {}; }
+      try{ unavailExceptions = (await fbGet(`unavail-exceptions-${weekKey}`)) || {}; }catch(e){ console.error(e); unavailExceptions = {}; }
+      try{ emailMapping = (await fbGet('email-role-mapping')) || {}; }catch(e){ console.error(e); emailMapping = {}; }
+      try{ rsvpConfirmations = (await fbGet(`rsvp-${weekKey}`)) || {}; }catch(e){ console.error(e); rsvpConfirmations = {}; }
+
       try{
         const bd = await fbGet('blink_disabled');
         blinkDisabled = !!bd;
@@ -1810,6 +1870,52 @@
       console.error(err);
       setStatus("Échec de l'enregistrement de ton statut d'absence.", "err");
     }
+  }
+
+  async function saveDayAbsences(){
+    try{ await fbSet(`day-absences-${weekKey}`, dayAbsences); }
+    catch(err){ console.error(err); setStatus("Échec de l'enregistrement de l'absence ponctuelle.", "err"); }
+  }
+  async function saveUrgentSlots(){
+    try{ await fbSet(`urgent-slots-${weekKey}`, urgentSlots); }
+    catch(err){ console.error(err); }
+  }
+  async function saveOralSlots(){
+    try{ await fbSet(`oral-slots-${weekKey}`, oralSlots); }
+    catch(err){ console.error(err); setStatus("Échec de l'enregistrement du marquage entretien oral.", "err"); }
+  }
+  async function saveRecurringUnavailable(){
+    try{ await fbSet('recurring-unavailable', recurringUnavailable); }
+    catch(err){ console.error(err); setStatus("Échec de l'enregistrement des indisponibilités récurrentes.", "err"); }
+  }
+  async function saveUnavailExceptions(){
+    try{ await fbSet(`unavail-exceptions-${weekKey}`, unavailExceptions); }
+    catch(err){ console.error(err); }
+  }
+  async function saveRsvpConfirmations(){
+    try{ await fbSet(`rsvp-${weekKey}`, rsvpConfirmations); }
+    catch(err){ console.error(err); }
+  }
+  async function loadQuotaRequests(){
+    try{ return (await fbGet('quota-requests')) || []; }catch(e){ console.error(e); return []; }
+  }
+  function pruneOldQuotaRequests(list){
+    const cutoff = Date.now() - 30*24*3600*1000;
+    return list.filter(r => r.status === 'pending' || new Date(r.resolvedAt || r.createdAt).getTime() >= cutoff);
+  }
+  async function saveQuotaRequests(list){
+    const pruned = pruneOldQuotaRequests(list);
+    try{ await fbSet('quota-requests', pruned); quotaRequests = pruned; }
+    catch(e){ console.error(e); setStatus("Échec de l'enregistrement de la demande de dérogation.", "err"); }
+  }
+  function updateQuotaBadge(){
+    const badge = document.getElementById('prems-quota-badge');
+    if(!badge) return;
+    const pendingCount = quotaRequests.filter(r=>r.status==='pending').length;
+    badge.textContent = pendingCount > 9 ? '9+' : String(pendingCount);
+    badge.style.display = pendingCount > 0 ? 'flex' : 'none';
+    badge.style.alignItems = 'center';
+    badge.style.justifyContent = 'center';
   }
 
   // --- Journal d'actions (traçabilité) ---------------------------------------
@@ -1974,7 +2080,13 @@
 
     const slotTaken = list.length > 0;
 
+    if(isAdmin){
+      const oralOn = !!oralSlots[key];
+      actionsHtml += `<button class="prems-btn ${oralOn ? '' : 'ghost'} small" data-action="admin-toggle-oral-slot" style="margin-bottom:6px;">🎤 ${oralOn ? 'Retirer' : 'Marquer'} : entretien oral sur ce créneau</button>`;
+    }
+
     if(myAssignment){
+      const slotPast = isSlotFullyPast(day, slotIdx);
       actionsHtml += `
         <label class="prems-hint" style="display:flex; align-items:center; gap:6px; margin:2px 0 2px;">
           <input type="checkbox" id="prems-partial-toggle" ${myAssignment.partial ? 'checked' : ''}> Je ne suis dispo qu'une heure sur ce créneau
@@ -1986,12 +2098,22 @@
         <button class="prems-btn ghost small" data-action="update-partial">Mettre à jour la disponibilité</button>
       `;
       actionsHtml += `<button class="prems-btn ${myAssignment.oral ? 'ghost' : ''}" data-action="toggle-oral">${myAssignment.oral ? '✅ Entretien oral prévue (cliquer pour retirer)' : '🎤 Marquer « Entretien oral prévue »'}</button>`;
-      actionsHtml += `<button class="prems-btn" data-action="remove-mine">Me retirer de ce créneau</button>`;
-      actionsHtml += `<button class="prems-btn ghost" data-action="propose-swap">🔄 Proposer un échange</button>`;
+      if(slotPast){
+        actionsHtml += `<p class="prems-hint">🔒 Ce créneau est déjà terminé — il ne peut plus être retiré, échangé, ni annulé (ça évite de libérer artificiellement la limite de 3 jours après coup).</p>`;
+      } else {
+        actionsHtml += `<button class="prems-btn" data-action="remove-mine">Me retirer de ce créneau</button>`;
+        actionsHtml += `<button class="prems-btn ghost" data-action="propose-swap">🔄 Proposer un échange</button>`;
+        actionsHtml += `<button class="prems-btn ghost" data-action="emergency-cancel" style="border-color:#e2574c; color:#e2574c;" title="Empêchement de dernière minute : libère le créneau tout de suite">🚨 Annulation de dernière minute</button>`;
+      }
     } else if(mySuppleantOf){
       actionsHtml += `<button class="prems-btn" data-action="remove-suppleance">Retirer ma suppléance</button>`;
     } else if(absences[me]){
       actionsHtml += `<p class="prems-hint">Tu es marqué(e) absent(e) cette semaine — décoche « Absent(e) » pour pouvoir prendre un créneau.</p>`;
+    } else if(dayAbsences[me] && dayAbsences[me][day]){
+      actionsHtml += `<p class="prems-hint">Tu es marqué(e) absent(e) le ${day} (absence ponctuelle) — retire-la via "📅 Absence ponctuelle" pour pouvoir agir sur ce créneau ce jour-là.</p>`;
+    } else if((recurringUnavailable[me]||[]).some(u=>u.day===day && u.slot===slotIdx) && !((unavailExceptions[me]||[]).some(u=>u.day===day && u.slot===slotIdx))){
+      actionsHtml += `<p class="prems-hint">🚫 Tu as marqué ce créneau comme indisponible de façon récurrente (${day} ${slotLabel}).</p>`;
+      actionsHtml += `<button class="prems-btn ghost small" data-action="unavail-exception-week">Je suis exceptionnellement disponible cette semaine</button>`;
     } else if(slotTaken){
       // Créneau déjà pris par quelqu'un d'autre : suppléant possible, ou
       // demande de priorité (désormais soumise à validation par un
@@ -2047,6 +2169,24 @@
         actionsHtml += `<p class="prems-hint">Tu as déjà pris cette tranche (${slotLabel}) sur 3 jours différents cette semaine.</p>`;
       } else if(fatigueBlocked){
         actionsHtml += `<p class="prems-hint">⛔ Créneau bloqué : avec celui-ci, tu enchaînerais ${projectedRun} créneaux d'affilée le ${day} (soit ${projectedRun*2}h), au-delà du seuil autorisé par l'administrateur (${fatigueThreshold}).</p>`;
+      }
+      if(takeDisabled){
+        const myPendingQuota = quotaRequests.find(r=>r.requesterName===me && r.key===key && r.status==='pending');
+        const myUnseenQuota = quotaRequests.find(r=>r.requesterName===me && r.key===key && r.status!=='pending' && r.seenByRequester===false);
+        if(myUnseenQuota){
+          actionsHtml += myUnseenQuota.status === 'approved'
+            ? `<p class="prems-hint">✅ Ta dérogation a été <strong>validée</strong> par ${myUnseenQuota.resolvedBy || 'un administrateur'} — tu peux reprendre ce créneau.</p>`
+            : `<p class="prems-hint">❌ Ta dérogation a été <strong>refusée</strong> par ${myUnseenQuota.resolvedBy || 'un administrateur'}.</p>`;
+          const idToMark = myUnseenQuota.id;
+          loadQuotaRequests().then(list2=>{
+            saveQuotaRequests(list2.map(r=> r.id===idToMark ? { ...r, seenByRequester:true } : r));
+          });
+        }
+        if(myPendingQuota){
+          actionsHtml += `<p class="prems-hint">⏳ Demande de dérogation déjà envoyée pour ce créneau, en attente de validation par un administrateur.</p>`;
+        } else {
+          actionsHtml += `<button class="prems-btn ghost small" data-action="request-quota-override">📩 Demander une dérogation</button>`;
+        }
       }
     }
 
@@ -2109,8 +2249,55 @@
       btn.addEventListener('click', async ()=>{
         const action = btn.dataset.action;
         if(action === 'close'){ closeModal(); return; }
-        if(action === 'propose-swap'){ openSwapProposalModal(day, slotIdx, key, me); return; }
+        if(action === 'propose-swap'){
+          if(isSlotFullyPast(day, slotIdx)){ setStatus("Ce créneau est déjà terminé — impossible de proposer un échange dessus.", "err"); return; }
+          openSwapProposalModal(day, slotIdx, key, me); return;
+        }
+        if(action === 'admin-toggle-oral-slot'){
+          if(!isAdmin) return;
+          if(oralSlots[key]) delete oralSlots[key]; else oralSlots[key] = true;
+          await saveOralSlots();
+          renderAll();
+          logAction(currentAdminName, oralSlots[key] ? "a marqué un entretien oral sur un créneau" : "a retiré le marquage entretien oral d'un créneau", `${day} ${slotLabel}`);
+          closeModal();
+          return;
+        }
+        if(action === 'emergency-cancel'){
+          if(isSlotFullyPast(day, slotIdx)){ setStatus("Ce créneau est déjà terminé — impossible de l'annuler après coup.", "err"); closeModal(); return; }
+          if(!window.confirm("Confirmer une annulation de dernière minute ? Si tu as un(e) suppléant(e), il/elle sera promu(e) titulaire automatiquement ; sinon le créneau sera marqué « ⚠ URGENT : vide » pour attirer l'attention des autres.")) return;
+          await emergencyCancelSlot(day, slotIdx, key, me);
+          closeModal();
+          return;
+        }
+        if(action === 'unavail-exception-week'){
+          const list2 = unavailExceptions[me] ? unavailExceptions[me].slice() : [];
+          if(!list2.some(u=>u.day===day && u.slot===slotIdx)) list2.push({ day, slot: slotIdx });
+          unavailExceptions[me] = list2;
+          await saveUnavailExceptions();
+          logAction(me, "s'est rendu(e) exceptionnellement disponible", `${day} ${slotLabel} (indispo récurrente levée pour cette semaine)`);
+          setStatus("Exception enregistrée pour cette semaine — tu peux maintenant prendre ce créneau.", "ok");
+          renderAll();
+          openSlotModal(day, slotIdx);
+          return;
+        }
+        if(action === 'request-quota-override'){
+          if(quotaRequests.some(r=>r.requesterName===me && r.key===key && r.status==='pending')){ closeModal(); return; }
+          const req = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+            requesterName: me, key, day, slotIdx, slotLabel,
+            status:'pending', createdAt: new Date().toISOString()
+          };
+          const list2 = await loadQuotaRequests();
+          list2.push(req);
+          await saveQuotaRequests(list2);
+          logAction(me, "a demandé une dérogation de quota", `${day} ${slotLabel} (en attente de validation admin)`);
+          setStatus(`Demande de dérogation envoyée pour ${day} ${slotLabel} — en attente de validation par un administrateur.`, "ok");
+          if(isAdmin) renderAdminStats();
+          closeModal();
+          return;
+        }
         if(action === 'remove-mine'){
+          if(isSlotFullyPast(day, slotIdx)){ setStatus("Ce créneau est déjà terminé — impossible de le retirer après coup.", "err"); return; }
           planning[key] = list.filter(a=>a.titulaire!==me);
           if(!planning[key].length) delete planning[key];
           logAction(me, "s'est retiré(e) d'un créneau", `${day} ${slotLabel}`);
@@ -2132,6 +2319,7 @@
           const newList = list.slice();
           newList.push({ titulaire: me, suppleant: null, partial });
           planning[key] = newList;
+          if(urgentSlots[key]){ delete urgentSlots[key]; saveUrgentSlots(); }
           // Inscription tardive : le créneau a déjà commencé au moment où il est pris.
           const slotDT = getSlotDateTime(DAYS.indexOf(day), slotIdx);
           const late = !!(slotDT && new Date() > slotDT);
@@ -2230,6 +2418,34 @@
         }
       });
     });
+  }
+
+  // Réutilisable : promeut le suppléant s'il y en a un, sinon vide le créneau
+  // et le marque "urgent". Utilisée par le bouton du modal ET par le RSVP
+  // veille-au-soir (cf. checkRsvpPrompts).
+  async function emergencyCancelSlot(day, slotIdx, key, me){
+    const list = planning[key] || [];
+    const mine = list.find(a=>a.titulaire===me);
+    if(!mine) return false;
+    const slotLabel = SLOTS.find(s=>s.idx===slotIdx).label;
+    if(mine.suppleant){
+      const supp = mine.suppleant;
+      planning[key] = list.map(a=> a.titulaire===me ? { titulaire: supp, suppleant: null, partial: a.partial, oral: a.oral } : a);
+      logAction(me, "a annulé en urgence — remplacé(e) par son suppléant", `${day} ${slotLabel} → ${supp}`);
+      setStatus(`Annulation enregistrée — ${supp} a été promu(e) titulaire de ce créneau.`, "ok");
+    } else {
+      planning[key] = list.filter(a=>a.titulaire!==me);
+      if(!planning[key].length) delete planning[key];
+      urgentSlots[key] = { reason:"absence de dernière minute", by: me, ts: new Date().toISOString() };
+      await saveUrgentSlots();
+      logAction(me, "a annulé en urgence — créneau laissé vide, marqué urgent", `${day} ${slotLabel}`);
+      setStatus(`Annulation enregistrée — ce créneau est marqué "⚠ URGENT : vide" pour attirer l'attention des autres.`, "err");
+    }
+    renderTable();
+    updateLiveIndicator();
+    syncRecoAfterChange();
+    await savePlanning();
+    return true;
   }
 
   function finishSlotAction(){
@@ -2347,6 +2563,121 @@
     lastSwapBadgeCount = total;
   }
 
+  // --- Bourse d'échange publique : offres ouvertes à n'importe qui ---------
+  const openMarketBadgeEl = document.getElementById('prems-open-market-badge');
+  async function updateOpenMarketBadge(){
+    const me = recruiterSelect.value;
+    if(!openMarketBadgeEl) return;
+    let all = [];
+    try{ all = await loadSwapRequests(); }catch(e){ return; }
+    const count = all.filter(r=>r.open && r.status==='pending' && r.fromName!==me).length;
+    openMarketBadgeEl.textContent = count > 9 ? '9+' : String(count);
+    openMarketBadgeEl.style.display = count > 0 ? 'flex' : 'none';
+    openMarketBadgeEl.style.alignItems = 'center';
+    openMarketBadgeEl.style.justifyContent = 'center';
+  }
+
+  document.getElementById('prems-open-market-btn').addEventListener('click', ()=> openMarketModal());
+
+  async function openMarketModal(){
+    const me = recruiterSelect.value;
+    if(!me){ setStatus("Sélectionne d'abord ton nom.", "err"); return; }
+    const all = await loadSwapRequests();
+    const offers = all.filter(r=>r.open && r.status==='pending');
+
+    // Mes propres créneaux encore valables (pas déjà terminés), pour pouvoir
+    // en proposer un en échange contre une offre publique de quelqu'un d'autre.
+    const mySlots = [];
+    DAYS.forEach(d=> SLOTS.forEach(s=>{
+      const k = `${d}-${s.idx}`;
+      const list = planning[k] || [];
+      if(list.some(a=>a.titulaire===me) && !isSlotFullyPast(d, s.idx)) mySlots.push({ key:k, label:`${d} ${s.label}` });
+    }));
+
+    const rows = offers.length ? offers.map(o=>{
+      if(o.fromName === me){
+        return `<div class="prems-swap-item">
+          Ton offre publique : <em>${o.fromLabel}</em>.
+          <div class="row"><button class="prems-btn ghost small" data-market-cancel="${o.id}">Retirer de la bourse</button></div>
+        </div>`;
+      }
+      const selectId = `prems-market-select-${o.id}`;
+      return `<div class="prems-swap-item">
+        <strong>${o.fromName}</strong> propose en échange : <em>${o.fromLabel}</em> — peu importe contre quoi.
+        ${mySlots.length ? `
+          <div class="row" style="flex-wrap:wrap;">
+            <select class="prems-select" id="${selectId}" style="flex:1; min-width:160px;">
+              ${mySlots.map(s=>`<option value="${s.key}">${s.label}</option>`).join('')}
+            </select>
+            <button class="prems-btn small" data-market-claim="${o.id}" data-market-select="${selectId}">🤝 Échanger</button>
+          </div>` : `<p class="prems-hint">Tu n'as pas de créneau encore valable à proposer en échange.</p>`}
+      </div>`;
+    }).join('') : `<p class="prems-hint">Aucune offre publique pour l'instant. Depuis un de tes créneaux, "🔄 Proposer un échange" → "🔓 Rendre public" pour en ajouter une.</p>`;
+
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:480px;">
+          <h3>🔓 Bourse d'échange</h3>
+          <p class="sub">Offres ouvertes à tout le monde — l'échange se fait tout de suite, sans validation supplémentaire.</p>
+          <div style="max-height:340px; overflow:auto;">${rows}</div>
+          <div class="actions" style="margin-top:12px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        </div>
+      </div>`;
+
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+
+    modalLayer.querySelectorAll('[data-market-cancel]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        let list = await loadSwapRequests();
+        list = list.filter(r=>r.id!==btn.dataset.marketCancel);
+        await saveSwapRequests(list);
+        setStatus("Offre retirée de la bourse d'échange.", "ok");
+        updateOpenMarketBadge();
+        openMarketModal();
+      });
+    });
+
+    modalLayer.querySelectorAll('[data-market-claim]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const offer = offers.find(o=>o.id===btn.dataset.marketClaim);
+        if(!offer){ closeModal(); return; }
+        const selectEl = document.getElementById(btn.dataset.marketSelect);
+        const myKey = selectEl ? selectEl.value : null;
+        if(!myKey){ setStatus("Choisis un de tes créneaux à proposer en échange.", "err"); return; }
+        const myLabel = mySlots.find(s=>s.key===myKey)?.label || myKey;
+        if(!window.confirm(`Échanger ton créneau (${myLabel}) contre celui de ${offer.fromName} (${offer.fromLabel}) ?`)) return;
+
+        let list = await loadSwapRequests();
+        const idx = list.findIndex(r=>r.id===offer.id);
+        if(idx === -1){ setStatus("Cette offre n'est plus disponible.", "err"); openMarketModal(); return; }
+
+        const fromList = planning[offer.fromKey] || [];
+        const toList = planning[myKey] || [];
+        const fromEntry = fromList.find(a=>a.titulaire===offer.fromName);
+        const toEntry = toList.find(a=>a.titulaire===me);
+        if(!fromEntry || !toEntry){
+          setStatus("La situation a changé entre-temps — échange impossible.", "err");
+          list.splice(idx,1);
+          await saveSwapRequests(list);
+          openMarketModal();
+          return;
+        }
+        fromEntry.titulaire = me;
+        toEntry.titulaire = offer.fromName;
+        renderAll();
+        await savePlanning();
+        list[idx] = { ...list[idx], status:'accepted', toName: me, toKey: myKey, toLabel: myLabel, resolvedAt: new Date().toISOString(), seenBySender:false, seenByRecipient:true };
+        await saveSwapRequests(list);
+        logAction(me, "a pris une offre de la bourse d'échange", `${offer.fromLabel} (de ${offer.fromName}) contre ${myLabel}`);
+        setStatus("Échange effectué via la bourse d'échange.", "ok");
+        updateSwapBadge();
+        updateOpenMarketBadge();
+        closeModal();
+      });
+    });
+  }
+
   function openSwapProposalModal(fromDay, fromSlotIdx, fromKey, me){
     const fromLabel = `${fromDay} ${SLOTS.find(s=>s.idx===fromSlotIdx).label}`;
     const options = [];
@@ -2366,7 +2697,7 @@
       <div class="prems-modal-backdrop" id="prems-modal-backdrop">
         <div class="prems-modal">
           <h3>Proposer un échange</h3>
-          <p class="sub">Ton créneau : ${fromLabel}. Choisis le créneau (et la personne) que tu veux avoir à la place.</p>
+          <p class="sub">Ton créneau : ${fromLabel}. Choisis le créneau (et la personne) que tu veux avoir à la place, ou rends ton offre publique si peu importe qui.</p>
           ${options.length ? `
             <div class="actions">
               <select class="prems-select" id="prems-swap-target" style="width:100%;">
@@ -2374,7 +2705,11 @@
               </select>
               <button class="prems-btn" data-action="send-swap">Envoyer la demande</button>
               <button class="prems-btn ghost" data-action="close">Annuler</button>
-            </div>` : `<p class="prems-hint">Aucun autre créneau occupé disponible pour un échange cette semaine.</p><div class="actions"><button class="prems-btn ghost" data-action="close">Fermer</button></div>`}
+            </div>` : `<div class="actions"><button class="prems-btn ghost" data-action="close">Fermer</button></div>`}
+          <p class="prems-hint" style="margin-top:8px;">Ou :</p>
+          <div class="actions">
+            <button class="prems-btn ghost" data-action="send-open-swap">🔓 Rendre public — peu importe qui</button>
+          </div>
         </div>
       </div>`;
 
@@ -2401,6 +2736,22 @@
         updateSwapBadge();
       });
     }
+    modalLayer.querySelector('[data-action="send-open-swap"]').addEventListener('click', async ()=>{
+      if(isSlotFullyPast(fromDay, fromSlotIdx)){ setStatus("Ce créneau est déjà terminé — impossible de le proposer en échange.", "err"); return; }
+      const req = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        fromName: me, fromKey, fromLabel,
+        toName: null, toKey: null, toLabel: null, open: true,
+        status: 'pending', createdAt: new Date().toISOString()
+      };
+      const list = await loadSwapRequests();
+      list.push(req);
+      await saveSwapRequests(list);
+      closeModal();
+      logAction(me, "a mis un créneau en bourse d'échange publique", fromLabel);
+      setStatus(`Ton créneau (${fromLabel}) est maintenant proposé publiquement dans la bourse d'échange.`, "ok");
+      updateOpenMarketBadge();
+    });
   }
 
   async function respondSwap(req, accept, forcedByAdmin){
@@ -2803,6 +3154,7 @@
       missingBadge.style.justifyContent = 'center';
     }
     updatePriorityBadge();
+    updateQuotaBadge();
     const swapsBadge = document.getElementById('prems-admin-swaps-badge');
     if(swapsBadge){
       const pendingSwaps = swapRequestsCache.filter(r=>r.status==='pending').length;
@@ -3031,6 +3383,47 @@
     }
   });
 
+  // --- "📊 Mon historique" : mes propres créneaux/absences des semaines passées ---
+  document.getElementById('prems-my-history-btn').addEventListener('click', async ()=>{
+    const me = recruiterSelect.value;
+    if(!me){ setStatus("Sélectionne d'abord ton nom.", "err"); return; }
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:460px;">
+          <h3>📊 Mon historique</h3>
+          <p class="sub">Tes créneaux et absences sur les 8 dernières semaines connues.</p>
+          <div id="prems-my-history-content"><p class="prems-hint">Chargement…</p></div>
+          <div class="actions" style="margin-top:10px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+
+    let hist = [];
+    try{ hist = (await fbGet('week_history')) || []; }catch(e){ console.error(e); }
+    const weeks = hist.slice().sort((a,b)=> b.monday.localeCompare(a.monday)).slice(0, 8);
+    const contentEl = document.getElementById('prems-my-history-content');
+    if(!weeks.length){ contentEl.innerHTML = `<p class="prems-hint">Aucune semaine antérieure enregistrée pour l'instant.</p>`; return; }
+
+    const blocks = [];
+    for(const w of weeks){
+      let p = {}, a = {};
+      try{
+        p = (await fbGet(`planning-${w.weekKey}`)) || {};
+        a = (await fbGet(`absences-${w.weekKey}`)) || {};
+      }catch(e){ console.error(e); }
+      const mySlots = [];
+      DAYS.forEach(d=> SLOTS.forEach(s=>{
+        const list = p[`${d}-${s.idx}`] || [];
+        if(list.some(x=>x.titulaire===me)) mySlots.push(`${d} ${s.label}`);
+      }));
+      const dateLabel = w.monday.split('-').reverse().join('/');
+      const absentLine = a[me] ? `<br><em>Absent(e) toute la semaine.</em>` : '';
+      blocks.push(`<p><strong>Semaine du ${dateLabel}</strong><br>${mySlots.length ? mySlots.join(', ') : "Aucun créneau pris."}${absentLine}</p>`);
+    }
+    contentEl.innerHTML = blocks.join('<hr style="border-color:var(--border); margin:8px 0;">');
+  });
+
   // --- Journal des actions (admin + recruteurs) ---
   adminLogBtn.addEventListener('click', async ()=>{
     if(!isAdmin) return;
@@ -3145,6 +3538,7 @@
           <td class="mono">${code}</td>
           <td><input class="prems-input" data-grade-label="${code}" value="${g.label}" style="width:100%;"></td>
           <td><input type="color" data-grade-color="${code}" value="${/^#/.test(g.color) ? g.color : '#e2574c'}"></td>
+          <td style="text-align:center;"><input type="checkbox" data-grade-auto-admin="${code}" ${g.autoAdmin ? 'checked' : ''} title="Ce grade obtient automatiquement le mode administrateur via Base44, sans mot de passe"></td>
           <td>${usedCount ? `${usedCount} recruteur(s)` : '—'}</td>
           <td><button class="prems-btn ghost small" data-action="remove-grade" data-code="${code}" ${usedCount ? 'disabled title="Grade encore utilisé — réaffecte ces recruteurs avant de le retirer"' : ''}>✕</button></td>
         </tr>`;
@@ -3152,13 +3546,13 @@
 
     modalLayer.innerHTML = `
       <div class="prems-modal-backdrop" id="prems-modal-backdrop">
-        <div class="prems-modal" style="max-width:580px;">
+        <div class="prems-modal" style="max-width:640px;">
           <h3>🎓 Gérer les grades</h3>
-          <p class="sub">S'applique à toute l'équipe dès l'enregistrement. Un grade encore utilisé par un recruteur ne peut pas être retiré (réaffecte-le·s d'abord via "✎" sur son chip).</p>
+          <p class="sub">S'applique à toute l'équipe dès l'enregistrement. Un grade encore utilisé par un recruteur ne peut pas être retiré (réaffecte-le·s d'abord via "✎" sur son chip). La colonne "Admin auto" sert à l'intégration Base44 (cf. "📧 Table des e-mails").</p>
           <div style="max-height:280px; overflow:auto;">
             <table class="prems-recap-table">
-              <thead><tr><th>Code</th><th>Libellé</th><th>Couleur</th><th>Utilisé par</th><th></th></tr></thead>
-              <tbody>${rows || '<tr><td colspan="5">Aucun grade configuré.</td></tr>'}</tbody>
+              <thead><tr><th>Code</th><th>Libellé</th><th>Couleur</th><th>Admin auto</th><th>Utilisé par</th><th></th></tr></thead>
+              <tbody>${rows || '<tr><td colspan="6">Aucun grade configuré.</td></tr>'}</tbody>
             </table>
           </div>
           <div class="row" style="display:flex; gap:6px; margin-top:12px; flex-wrap:wrap; align-items:center;">
@@ -3196,17 +3590,19 @@
       if(!/^[A-Z0-9]{1,6}$/.test(code)){ hint.textContent = "Code invalide (1 à 6 lettres/chiffres, ex : PSY)."; return; }
       if(draftGrades[code]){ hint.textContent = "Ce code existe déjà."; return; }
       if(!label){ hint.textContent = "Entre un libellé."; return; }
-      draftGrades[code] = { label, color: colorInput.value };
+      draftGrades[code] = { label, color: colorInput.value, autoAdmin: false };
       openGradesModal(draftGrades);
     });
 
     modalLayer.querySelector('[data-action="save-grades"]').addEventListener('click', async ()=>{
-      // Récupère les libellés/couleurs édités inline avant d'enregistrer.
+      // Récupère les libellés/couleurs/admin-auto édités inline avant d'enregistrer.
       Object.keys(draftGrades).forEach(code=>{
         const labelEl = modalLayer.querySelector(`[data-grade-label="${code}"]`);
         const colorEl = modalLayer.querySelector(`[data-grade-color="${code}"]`);
+        const autoAdminEl = modalLayer.querySelector(`[data-grade-auto-admin="${code}"]`);
         if(labelEl && labelEl.value.trim()) draftGrades[code].label = labelEl.value.trim();
         if(colorEl && colorEl.value) draftGrades[code].color = colorEl.value;
+        draftGrades[code].autoAdmin = !!(autoAdminEl && autoAdminEl.checked);
       });
       if(!Object.keys(draftGrades).length){ setStatus("Il faut garder au moins un grade.", "err"); return; }
       try{
@@ -3354,7 +3750,120 @@
     checkMyUpcomingSlotReminder();
     computeRecommendationsFor(recruiterSelect.value);
     updateSwapBadge();
+    updateOpenMarketBadge();
     renderLegend();
+    checkUnavailRenewalBanner();
+    checkRsvpPrompts();
+  });
+
+  // --- Bandeau hebdomadaire de reconduction des indisponibilités récurrentes ---
+  function checkUnavailRenewalBanner(){
+    const banner = document.getElementById('prems-unavail-banner');
+    const textEl = document.getElementById('prems-unavail-banner-text');
+    if(!banner || !textEl) return;
+    const me = recruiterSelect.value;
+    const mine = me ? (recurringUnavailable[me] || []) : [];
+    if(!me || !mine.length){ banner.style.display = 'none'; return; }
+    let decided = false;
+    try{ decided = localStorage.getItem(`prems-unavail-decided-${weekKey}-${me}`) === '1'; }catch(e){}
+    if(decided){ banner.style.display = 'none'; return; }
+    const listTxt = mine.map(u=>{
+      const s = SLOTS.find(sl=>sl.idx===u.slot);
+      return `${u.day} ${s ? s.label : ''}`;
+    }).join(', ');
+    textEl.textContent = `Tes indisponibilités récurrentes (${listTxt}) sont-elles toujours d'actualité cette semaine ?`;
+    banner.style.display = 'flex';
+  }
+
+  // --- RSVP : confirmation la veille au soir des créneaux du lendemain ------
+  // Détecte, parmi mes créneaux, ceux qui tombent "demain" (dans la semaine
+  // affichée) et que je n'ai pas encore confirmés, puis propose soit de
+  // confirmer, soit de déclencher directement le flux d'annulation d'urgence
+  // (promotion du suppléant ou marquage "urgent").
+  // Limite connue : ne détecte pas le cas où "demain" tombe sur la semaine
+  // suivante (dernier jour de la semaine affichée) — cas rare, à améliorer
+  // si besoin plus tard.
+  function checkRsvpPrompts(){
+    const me = recruiterSelect.value;
+    if(!me) return;
+    const tomorrowSlots = [];
+    DAYS.forEach((d,i)=>{
+      if(i - rawTodayIdx !== 1) return; // seulement "demain"
+      SLOTS.forEach(s=>{
+        const key = `${d}-${s.idx}`;
+        const list = planning[key] || [];
+        if(list.some(a=>a.titulaire===me)){
+          const rsvpKey = `${key}|${me}`;
+          if(!rsvpConfirmations[rsvpKey] && !rsvpDismissedThisSession.has(rsvpKey)){
+            tomorrowSlots.push({ day:d, slotIdx:s.idx, key, label:s.label, rsvpKey });
+          }
+        }
+      });
+    });
+    if(tomorrowSlots.length) openRsvpModal(tomorrowSlots, me);
+  }
+
+  function openRsvpModal(slots, me){
+    const rows = slots.map(s=>`
+      <div class="prems-swap-item" data-rsvp-row="${s.rsvpKey}">
+        <strong>${s.day} ${s.label}</strong> — c'est demain.
+        <div class="row">
+          <button class="prems-btn small" data-rsvp-confirm="${s.rsvpKey}">✅ Je confirme</button>
+          <button class="prems-btn ghost small" data-rsvp-cancel="1" data-rsvp-key="${s.key}" data-rsvp-day="${s.day}" data-rsvp-slot="${s.slotIdx}" data-rsvp-label="${s.label}">🚨 Je ne peux plus</button>
+        </div>
+      </div>`).join('');
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:420px;">
+          <h3>📆 Confirme ta présence de demain</h3>
+          <p class="sub">Un petit rappel avant qu'il soit trop tard pour trouver un remplaçant.</p>
+          ${rows}
+          <div class="actions" style="margin-top:10px;"><button class="prems-btn ghost" data-action="close">Plus tard</button></div>
+        </div>
+      </div>`;
+    const dismissAll = ()=> slots.forEach(s=>rsvpDismissedThisSession.add(s.rsvpKey));
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop'){ dismissAll(); closeModal(); } });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', ()=>{ dismissAll(); closeModal(); });
+    modalLayer.querySelectorAll('[data-rsvp-confirm]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const rsvpKey = btn.dataset.rsvpConfirm;
+        rsvpConfirmations[rsvpKey] = true;
+        await saveRsvpConfirmations();
+        logAction(me, "a confirmé sa présence pour demain", rsvpKey.split('|')[0]);
+        const row = modalLayer.querySelector(`[data-rsvp-row="${rsvpKey}"]`);
+        if(row) row.innerHTML = `<span class="prems-hint">✅ Confirmé — merci !</span>`;
+      });
+    });
+    modalLayer.querySelectorAll('[data-rsvp-cancel]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const day = btn.dataset.rsvpDay, slotIdx = Number(btn.dataset.rsvpSlot), key = btn.dataset.rsvpKey, label = btn.dataset.rsvpLabel;
+        if(!window.confirm(`Confirmer que tu ne peux plus assurer ${day} ${label} ? Ton/ta suppléant(e) sera promu(e) automatiquement, sinon le créneau sera marqué urgent.`)) return;
+        await emergencyCancelSlot(day, slotIdx, key, me);
+        closeModal();
+      });
+    });
+  }
+
+
+  const unavailRenewYesBtn = document.getElementById('prems-unavail-renew-yes');
+  if(unavailRenewYesBtn) unavailRenewYesBtn.addEventListener('click', ()=>{
+    const me = recruiterSelect.value;
+    if(me){ try{ localStorage.setItem(`prems-unavail-decided-${weekKey}-${me}`, '1'); }catch(e){} }
+    document.getElementById('prems-unavail-banner').style.display = 'none';
+  });
+
+  const unavailRenewNoBtn = document.getElementById('prems-unavail-renew-no');
+  if(unavailRenewNoBtn) unavailRenewNoBtn.addEventListener('click', async ()=>{
+    const me = recruiterSelect.value;
+    if(!me) return;
+    const mine = recurringUnavailable[me] || [];
+    unavailExceptions[me] = mine.slice();
+    await saveUnavailExceptions();
+    try{ localStorage.setItem(`prems-unavail-decided-${weekKey}-${me}`, '1'); }catch(e){}
+    document.getElementById('prems-unavail-banner').style.display = 'none';
+    logAction(me, "s'est rendu(e) exceptionnellement disponible pour toutes ses indispos récurrentes", "cette semaine uniquement");
+    setStatus("Exception enregistrée pour toute la semaine sur tes indisponibilités récurrentes habituelles.", "ok");
+    renderAll();
   });
 
   absentToggle.addEventListener('change', ()=>{
@@ -3368,6 +3877,334 @@
     logAction(me, absentToggle.checked ? "s'est déclaré(e) absent(e)" : "a retiré sa déclaration d'absence");
   });
 
+  // --- Absence ponctuelle (un ou plusieurs jours précis, pas toute la semaine) ---
+  document.getElementById('prems-day-absence-btn').addEventListener('click', ()=>{
+    const me = recruiterSelect.value;
+    if(!me){ setStatus("Sélectionne d'abord ton nom.", "err"); return; }
+    openDayAbsenceModal(me);
+  });
+
+  function openDayAbsenceModal(name){
+    const current = dayAbsences[name] || {};
+    const rows = DAYS.map(d=>`
+      <label class="prems-hint" style="display:flex; align-items:center; gap:8px; padding:4px 0;">
+        <input type="checkbox" data-day-abs="${d}" ${current[d] ? 'checked' : ''}> ${d}
+      </label>`).join('');
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:380px;">
+          <h3>📅 Absence ponctuelle</h3>
+          <p class="sub">Coche les jours où ${name} est absent(e) cette semaine — les autres jours restent normaux (contrairement à « Absent(e) cette semaine »).</p>
+          <div>${rows}</div>
+          <div class="actions" style="margin-top:12px;">
+            <button class="prems-btn" data-action="save-day-abs">Enregistrer</button>
+            <button class="prems-btn ghost" data-action="close">Annuler</button>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+    modalLayer.querySelector('[data-action="save-day-abs"]').addEventListener('click', async ()=>{
+      const checked = Array.from(modalLayer.querySelectorAll('[data-day-abs]')).filter(c=>c.checked).map(c=>c.dataset.dayAbs);
+      if(checked.length) dayAbsences[name] = Object.fromEntries(checked.map(d=>[d, true]));
+      else delete dayAbsences[name];
+      renderAll();
+      await saveDayAbsences();
+      const actor = recruiterSelect.value || name;
+      logAction(actor, name===actor ? "a déclaré une absence ponctuelle" : `a modifié l'absence ponctuelle de ${name}`, checked.length ? checked.join(', ') : 'aucune (retirée)');
+      setStatus(checked.length ? `Absence ponctuelle enregistrée (${checked.join(', ')}).` : "Absence ponctuelle retirée.", "ok");
+      closeModal();
+    });
+  }
+
+  // --- Indisponibilités récurrentes ("anti-favoris") -------------------------
+  // L'inverse des favoris : des créneaux où on sait qu'on ne sera JAMAIS
+  // disponible (cours, impératif pro fixe...), reconduits automatiquement
+  // chaque semaine sans limite de nombre.
+  document.getElementById('prems-recurring-unavail-btn').addEventListener('click', ()=>{
+    const me = recruiterSelect.value;
+    if(!me){ setStatus("Sélectionne d'abord ton nom.", "err"); return; }
+    openRecurringUnavailModal(me);
+  });
+
+  function openRecurringUnavailModal(me){
+    const mine = recurringUnavailable[me] || [];
+    const isChecked = (d, idx)=> mine.some(u=>u.day===d && u.slot===idx);
+    let grid = `<table class="prems-recap-table"><thead><tr><th></th>${DAYS.map(d=>`<th>${d.slice(0,3)}</th>`).join('')}</tr></thead><tbody>`;
+    SLOTS.forEach(s=>{
+      grid += `<tr><td class="mono">${s.label}</td>`;
+      DAYS.forEach(d=>{
+        grid += `<td style="text-align:center;"><input type="checkbox" data-unavail-day="${d}" data-unavail-slot="${s.idx}" ${isChecked(d, s.idx) ? 'checked' : ''}></td>`;
+      });
+      grid += `</tr>`;
+    });
+    grid += `</tbody></table>`;
+
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:560px;">
+          <h3>🚫 Mes indisponibilités récurrentes</h3>
+          <p class="sub">Coche les créneaux où tu n'es jamais disponible (cours, impératif pro fixe...). Reconduit automatiquement chaque semaine, sans limite de nombre — contrairement aux favoris.</p>
+          <div style="max-height:320px; overflow:auto;">${grid}</div>
+          <div class="actions" style="margin-top:12px;">
+            <button class="prems-btn" data-action="save-unavail">Enregistrer</button>
+            <button class="prems-btn ghost" data-action="close">Annuler</button>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+    modalLayer.querySelector('[data-action="save-unavail"]').addEventListener('click', async ()=>{
+      const checked = Array.from(modalLayer.querySelectorAll('[data-unavail-day]'))
+        .filter(c=>c.checked)
+        .map(c=>({ day:c.dataset.unavailDay, slot:Number(c.dataset.unavailSlot) }));
+      if(checked.length) recurringUnavailable[me] = checked; else delete recurringUnavailable[me];
+      try{ await saveRecurringUnavailable(); }
+      catch(e){ console.error(e); }
+      logAction(me, "a mis à jour ses indisponibilités récurrentes", `${checked.length} créneau(x)`);
+      setStatus(`${checked.length} créneau(x) récurrent(s) marqué(s) indisponible(s).`, "ok");
+      closeModal();
+    });
+  }
+
+  // --- Validation des dérogations de quota par un administrateur ------------
+  document.getElementById('prems-admin-quota').addEventListener('click', ()=>{
+    if(!isAdmin) return;
+    openQuotaRequestsModal();
+  });
+
+  function openQuotaRequestsModal(){
+    const pending = quotaRequests.filter(r=>r.status==='pending');
+    const rows = pending.length
+      ? pending.map(r=>`
+          <div class="prems-swap-item">
+            <strong>${r.requesterName}</strong> demande une dérogation pour <em>${r.day} ${r.slotLabel}</em> (au-delà du quota ou du seuil de fatigue autorisé).
+            <div class="row">
+              <button class="prems-btn small" data-approve="${r.id}">✅ Valider</button>
+              <button class="prems-btn ghost small" data-reject="${r.id}">❌ Refuser</button>
+            </div>
+          </div>`).join('')
+      : `<p class="prems-hint">Aucune demande de dérogation en attente.</p>`;
+
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:480px;">
+          <h3>📩 Dérogations de quota en attente</h3>
+          <p class="sub">Une validation permet à la personne de reprendre ce créneau malgré la limite habituelle (jours max ou seuil de fatigue).</p>
+          <div style="max-height:340px; overflow:auto;">${rows}</div>
+          <div class="actions" style="margin-top:12px;"><button class="prems-btn ghost" data-action="close">Fermer</button></div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+    modalLayer.querySelectorAll('[data-approve]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{ await resolveQuotaRequest(btn.dataset.approve, true); openQuotaRequestsModal(); });
+    });
+    modalLayer.querySelectorAll('[data-reject]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{ await resolveQuotaRequest(btn.dataset.reject, false); openQuotaRequestsModal(); });
+    });
+  }
+
+  async function resolveQuotaRequest(id, approve){
+    if(!isAdmin) return;
+    let list = await loadQuotaRequests();
+    const idx = list.findIndex(r=>r.id===id);
+    if(idx === -1){ updateQuotaBadge(); return; }
+    const req = list[idx];
+    if(approve){
+      const targetList = planning[req.key] || [];
+      if(targetList.some(a=>a.titulaire===req.requesterName)){
+        setStatus("Cette personne a déjà pris ce créneau entre-temps.", "err");
+        list[idx] = { ...req, status:'rejected', resolvedAt:new Date().toISOString(), resolvedBy:currentAdminName, seenByRequester:false };
+      } else {
+        const newList = targetList.slice();
+        newList.push({ titulaire: req.requesterName, suppleant: null, partial: null });
+        planning[req.key] = newList;
+        if(urgentSlots[req.key]){ delete urgentSlots[req.key]; saveUrgentSlots(); }
+        await savePlanning();
+        renderAll();
+        list[idx] = { ...req, status:'approved', resolvedAt:new Date().toISOString(), resolvedBy:currentAdminName, seenByRequester:false };
+        logAction(currentAdminName, "a validé une dérogation de quota", `${req.requesterName} — ${req.day} ${req.slotLabel}`);
+        setStatus("Dérogation validée — le créneau a été attribué.", "ok");
+      }
+    } else {
+      list[idx] = { ...req, status:'rejected', resolvedAt:new Date().toISOString(), resolvedBy:currentAdminName, seenByRequester:false };
+      logAction(currentAdminName, "a refusé une dérogation de quota", `${req.requesterName} — ${req.day} ${req.slotLabel}`);
+      setStatus("Dérogation refusée.", "ok");
+    }
+    await saveQuotaRequests(list);
+    updateQuotaBadge();
+  }
+
+  // ============================================================
+  // Intégration Base44 (identification par e-mail) --------------------------
+  // Base44 ne transmet pas de grade directement : on associe l'e-mail
+  // connecté à un recruteur existant (table ci-dessous), et le grade DE CE
+  // RECRUTEUR (déjà présent dans "recruiters") décide s'il obtient le mode
+  // administrateur automatiquement (via la case "Admin auto" du panneau
+  // "🎓 Gérer les grades") — pas besoin de dupliquer le grade ici.
+  //
+  // ⚠️ CE QU'IL RESTE À CONFIRMER avant que ce soit pleinement fonctionnel :
+  //  1. La liste des e-mails réels de l'équipe (peut être saisie ci-dessous
+  //     par un admin, un par un, via "📧 Table des e-mails").
+  //  2. La façon dont Base44 transmet l'e-mail de la personne connectée à
+  //     cette page. Trois mécanismes sont tentés ci-dessous par prudence :
+  //     - une variable globale `window.BASE44_USER_EMAIL` posée par la page
+  //       hôte avant que ce widget se charge ;
+  //     - un paramètre d'URL `?email=` ou `?user_email=` ;
+  //     - un message `postMessage({type:'base44-user', email:'...'})` envoyé
+  //       par la fenêtre parente (utile si ce widget est dans une iframe).
+  //     Sans confirmation de Michel/Base44 sur le bon mécanisme, il est
+  //     possible qu'aucun des trois ne matche exactement — à ajuster une
+  //     fois que c'est confirmé.
+  // ============================================================
+  function detectBase44Email(){
+    try{ if(window.BASE44_USER_EMAIL) return String(window.BASE44_USER_EMAIL).trim().toLowerCase(); }catch(e){}
+    try{
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get('email') || params.get('user_email');
+      if(fromUrl) return fromUrl.trim().toLowerCase();
+    }catch(e){}
+    return null;
+  }
+
+  async function applyBase44Identity(email){
+    if(!email) return;
+    email = email.trim().toLowerCase();
+    let mapping = emailMapping;
+    try{ mapping = (await fbGet('email-role-mapping')) || {}; emailMapping = mapping; }catch(e){ console.error(e); }
+    const name = mapping[email];
+    if(!name){
+      console.warn(`Base44 : e-mail "${email}" non reconnu dans la table de correspondance — connexion manuelle requise.`);
+      setStatus(`Ton e-mail (${email}) n'est pas encore configuré — demande à un administrateur de l'ajouter dans "📧 Table des e-mails", ou sélectionne ton nom manuellement.`, "err");
+      return;
+    }
+    if(!recruiters.some(r=>r.name===name)){
+      console.warn(`Base44 : ${name} (associé à ${email}) n'existe plus comme recruteur actif.`);
+      return;
+    }
+    recruiterSelect.value = name;
+    recruiterSelect.disabled = true; // identité verrouillée : pas d'usurpation possible d'un autre recruteur
+    base44LockedIdentity = name;
+    const lockEl = document.getElementById('prems-identity-lock');
+    if(lockEl) lockEl.style.display = '';
+    syncAbsentToggle();
+    renderLegend();
+    computeRecommendationsFor(name);
+    updateSwapBadge();
+    checkUnavailRenewalBanner();
+    checkRsvpPrompts();
+    const r = recruiters.find(r=>r.name===name);
+    const grade = r ? r.grade : null;
+    if(grade && GRADES[grade] && GRADES[grade].autoAdmin){
+      isAdmin = true;
+      currentAdminName = name;
+      setAdminUI();
+      renderAll();
+      setStatus(`Connecté(e) automatiquement en tant qu'administrateur (${name}), via Base44.`, "ok");
+    } else {
+      setStatus(`Connecté(e) automatiquement en tant que ${name}, via Base44.`, "ok");
+    }
+  }
+
+  // Écoute un éventuel postMessage envoyé par la fenêtre parente (utile si
+  // ce widget est chargé dans une iframe sur le site Base44 de Michel).
+  window.addEventListener('message', (event)=>{
+    if(event.data && event.data.type === 'base44-user' && event.data.email){
+      applyBase44Identity(event.data.email);
+    }
+  });
+
+  document.getElementById('prems-admin-emails').addEventListener('click', ()=>{
+    if(!isAdmin) return;
+    openEmailMappingModal();
+  });
+
+  function openEmailMappingModal(){
+    const entries = Object.entries(emailMapping);
+    const rows = entries.map(([email, name])=>`
+      <tr>
+        <td><input class="prems-input" data-email-key="${email}" value="${email}" style="width:100%;"></td>
+        <td>
+          <select class="prems-select" data-email-name="${email}" style="width:100%;">
+            ${recruiters.map(r=>`<option value="${r.name}" ${r.name===name ? 'selected' : ''}>${r.name} (${r.grade})</option>`).join('')}
+          </select>
+        </td>
+        <td><button class="prems-btn ghost small" data-remove-email="${email}">✕</button></td>
+      </tr>`).join('');
+
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:560px;">
+          <h3>📧 Table des e-mails (Base44)</h3>
+          <p class="sub">Associe l'e-mail Base44 de chaque personne à son compte recruteur. Le grade de ce recruteur (marqué "Admin auto" dans "🎓 Gérer les grades") décide s'il/elle obtient le mode administrateur automatiquement.</p>
+          <div style="max-height:280px; overflow:auto;">
+            <table class="prems-recap-table">
+              <thead><tr><th>E-mail</th><th>Recruteur associé</th><th></th></tr></thead>
+              <tbody>${rows || '<tr><td colspan="3">Aucun e-mail configuré pour l’instant.</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div class="row" style="display:flex; gap:6px; margin-top:12px; flex-wrap:wrap; align-items:center;">
+            <input class="prems-input" id="prems-new-email" placeholder="nouvel-email@exemple.com" style="flex:1; min-width:180px;">
+            <select class="prems-select" id="prems-new-email-name">${recruiters.map(r=>`<option value="${r.name}">${r.name} (${r.grade})</option>`).join('')}</select>
+            <button class="prems-btn ghost small" data-action="add-email">+ Ajouter</button>
+          </div>
+          <p class="prems-hint" id="prems-email-hint"></p>
+          <div class="actions" style="margin-top:12px;">
+            <button class="prems-btn" data-action="save-emails">💾 Enregistrer</button>
+            <button class="prems-btn ghost" data-action="close">Annuler</button>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+
+    modalLayer.querySelectorAll('[data-remove-email]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        delete emailMapping[btn.dataset.removeEmail];
+        openEmailMappingModal();
+      });
+    });
+
+    modalLayer.querySelector('[data-action="add-email"]').addEventListener('click', ()=>{
+      const emailInput = document.getElementById('prems-new-email');
+      const nameSelect = document.getElementById('prems-new-email-name');
+      const hint = document.getElementById('prems-email-hint');
+      const email = emailInput.value.trim().toLowerCase();
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ hint.textContent = "E-mail invalide."; return; }
+      if(emailMapping[email]){ hint.textContent = "Cet e-mail est déjà configuré — modifie la ligne existante."; return; }
+      if(!nameSelect.value){ hint.textContent = "Choisis un recruteur (ajoute-en d'abord si la liste est vide)."; return; }
+      emailMapping[email] = nameSelect.value;
+      openEmailMappingModal();
+    });
+
+    modalLayer.querySelector('[data-action="save-emails"]').addEventListener('click', async ()=>{
+      // Récupère les éventuelles modifications d'e-mail/association faites en ligne.
+      const updated = {};
+      entries.forEach(([oldEmail])=>{
+        const keyEl = modalLayer.querySelector(`[data-email-key="${oldEmail}"]`);
+        const nameEl = modalLayer.querySelector(`[data-email-name="${oldEmail}"]`);
+        if(!keyEl || !nameEl) return; // supprimée entre-temps
+        const newEmail = keyEl.value.trim().toLowerCase();
+        if(newEmail) updated[newEmail] = nameEl.value;
+      });
+      // Ajoute celles créées via "+ Ajouter" qui n'étaient pas dans entries au départ.
+      Object.keys(emailMapping).forEach(email=>{ if(!(email in updated) && !entries.some(([e])=>e===email)) updated[email] = emailMapping[email]; });
+      emailMapping = updated;
+      try{
+        await fbSet('email-role-mapping', emailMapping);
+      }catch(e){
+        console.error(e);
+        setStatus("Échec de l'enregistrement de la table des e-mails.", "err");
+        return;
+      }
+      logAction(currentAdminName, "a modifié la table des e-mails Base44");
+      setStatus("Table des e-mails mise à jour.", "ok");
+      closeModal();
+    });
+  }
+
   // --- Bouton mobile "Plus d'actions" : replie/déplie les actions secondaires ---
   const mobileMenuBtn = document.getElementById('prems-mobile-menu-btn');
   if(mobileMenuBtn){
@@ -3380,7 +4217,14 @@
   }
 
   setAdminUI();
-  initFirebaseAuth().finally(()=> loadAll().then(updateSwapBadge));
+  initFirebaseAuth().finally(()=> loadAll().then(()=>{
+    updateSwapBadge();
+    updateOpenMarketBadge();
+    checkUnavailRenewalBanner();
+    const base44Email = detectBase44Email();
+    if(base44Email) applyBase44Identity(base44Email);
+    else checkRsvpPrompts();
+  }));
   setInterval(()=>{ renderTable(); updateLiveIndicator(); }, 60000);
   // Recharge les données partagées toutes les 15s pour voir les changements des collègues
   setInterval(()=>{ loadAll(true); }, 15000);
@@ -3388,5 +4232,8 @@
   setInterval(checkMyUpcomingSlotReminder, 20000);
   // Vérifie toutes les 15s si de nouvelles demandes d'échange sont arrivées (badge sur le bouton)
   setInterval(updateSwapBadge, 15000);
+  setInterval(updateOpenMarketBadge, 15000);
+  // Vérifie toutes les 30 min s'il y a un créneau de demain à confirmer (RSVP)
+  setInterval(checkRsvpPrompts, 30*60000);
 })();
 </script>
