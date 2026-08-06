@@ -522,7 +522,8 @@
         <span class="prems-hint">Je remplis le planning en tant que :</span>
         <select class="prems-select" id="prems-current-recruiter" style="min-width:200px;"></select>
         <span class="prems-hint" id="prems-identity-lock" style="display:none;" title="Ton identité est déterminée automatiquement par ton compte Base44 — impossible de changer pour quelqu'un d'autre.">🔒 Identité vérifiée via Base44</span>
-        <span class="prems-hint" id="prems-identity-required" style="display:none;" title="Connecte-toi avec ton e-mail pour pouvoir choisir un profil et modifier le planning.">🔒 Connecte-toi pour choisir ton profil</span>
+        <span class="prems-hint" id="prems-identity-required" style="display:none;" title="Connecte-toi avec ton e-mail, ou confirme ton nom, pour pouvoir modifier le planning.">🔒 Identifie-toi pour agir</span>
+        <button class="prems-btn ghost small" id="prems-pick-name-btn" style="display:none;" title="Pas encore d'e-mail configuré ? Confirme ton nom directement (y compris en mode admin).">👤 Choisir mon nom</button>
         <input class="prems-input" id="prems-manual-email-input" type="email" placeholder="ton-email@exemple.com" style="min-width:190px;" title="En attendant que Base44 transmette l'e-mail automatiquement, tu peux le saisir ici toi-même">
         <button class="prems-btn ghost small" id="prems-manual-email-login" title="Se connecter avec cet e-mail (comme le fera Base44 automatiquement plus tard)">🔐 Se connecter</button>
         <button class="prems-btn ghost small" id="prems-manual-email-logout" style="display:none;" title="Revenir à la sélection manuelle du nom">🔓 Se déconnecter</button>
@@ -672,12 +673,12 @@
   // loadAll) et ne retombe sur ces valeurs par défaut que si rien n'a encore
   // été personnalisé.
   const DEFAULT_GRADES = {
-    MF:  { label:"Médecin Formateur",      color:"#f5f5f5" },
-    RF:  { label:"Responsable Formateur",  color:"#ffffff" },
-    MC:  { label:"Médecin-Chef",           color:"#9e9e9e" },
-    ADD: { label:"Assistant de Direction", color:"#ffb6c1" },
-    CD:  { label:"Co-directeur",           color:"#e2574c" },
-    DIR: { label:"Directeur",              color:"#e2574c" },
+    MF:  { label:"Médecin Formateur",      color:"#f5f5f5", supervisor:false },
+    RF:  { label:"Responsable Formateur",  color:"#ffffff", supervisor:false },
+    MC:  { label:"Médecin-Chef",           color:"#9e9e9e", supervisor:true, autoAdmin:true },
+    ADD: { label:"Assistant de Direction", color:"#ffb6c1", supervisor:true, autoAdmin:true },
+    CD:  { label:"Co-directeur",           color:"#e2574c", supervisor:true, autoAdmin:true },
+    DIR: { label:"Directeur",              color:"#e2574c", supervisor:true, autoAdmin:true },
   };
   let GRADES = JSON.parse(JSON.stringify(DEFAULT_GRADES)); // remplacé au chargement par la config Firebase si elle existe
   // Conservés comme "vues" à plat de GRADES, car c'est ce que le reste du
@@ -824,7 +825,7 @@
   }
   async function fbGet(key){
     try{
-      const res = await fetch(`${FIREBASE_URL}/${key}.json`);
+      const res = await fetch(withAuth(`${FIREBASE_URL}/${key}.json`));
       if(!res.ok) throw new Error('fb get failed: ' + res.status);
       const data = await res.json(); // null si absent
       setConnectionStatus(true);
@@ -971,8 +972,12 @@
   };
   let emailMapping = {};
   let base44LockedIdentity = null; // nom du recruteur verrouillé si connecté via Base44, sinon null
+  let logoutRequests = {}; // { "Nom": "2026-08-06T12:00:00.000Z" } — déconnexions à distance demandées par un admin
   let rsvpConfirmations = {}; // { "Jeudi-4|Yoda": true } — confirmations "je serai là demain", par semaine
+  let presenceConfirmations = {}; // { "Jeudi-4|Yoda": "yes"|"no" } — "es-tu présent(e) ?" au moment même du créneau
+  const presenceDismissedThisSession = new Set();
   const rsvpDismissedThisSession = new Set(); // évite de renaguer un rappel déjà vu (fermé) dans cette session
+  const swapPromptShownThisSession = new Set(); // évite de rouvrir automatiquement une demande d'échange déjà montrée dans cette session
   let weekKey = "";
   let saving = false;
   let weekOverride = null;  // "YYYY-MM-DD" (lundi forcé par un admin), ou null = automatique
@@ -1060,7 +1065,26 @@
 
   computeWeekContext();
 
-  const rawTodayIdx = (new Date().getDay() === 0) ? 6 : new Date().getDay()-1; // 0=lundi, jour civil réel
+  let rawTodayIdx = (new Date().getDay() === 0) ? 6 : new Date().getDay()-1; // 0=lundi, jour civil réel — recalculé périodiquement, cf. recomputeDateContext()
+
+  // Recalcule le jour/la semaine si la page reste ouverte après minuit (ou
+  // après le passage à la semaine suivante) sans être rechargée — sinon tout
+  // (surlignage "aujourd'hui", rappels, RSVP, présence, calcul des créneaux
+  // déjà passés...) restait figé sur l'ancien jour indéfiniment.
+  function recomputeDateContext(){
+    const newRawTodayIdx = (new Date().getDay() === 0) ? 6 : new Date().getDay()-1;
+    const oldWeekKey = weekKey;
+    const dayChanged = newRawTodayIdx !== rawTodayIdx;
+    rawTodayIdx = newRawTodayIdx;
+    computeWeekContext(); // recalcule monday/sunday/weekKey/overrideActive
+    if(weekKey !== oldWeekKey){
+      // Nouvelle semaine : recharge tout depuis Firebase pour cette nouvelle semaine.
+      loadAll();
+    } else if(dayChanged){
+      // Même semaine, juste un nouveau jour : un simple re-rendu suffit.
+      renderAll();
+    }
+  }
 
   function getNowContext(){
     const now = new Date();
@@ -1625,38 +1649,31 @@
     absentLabel.classList.toggle('is-absent', absentToggle.checked);
   }
 
-  // Tant que personne n'est identifié(e) par e-mail (Base44 ou connexion
-  // manuelle/test) ET qu'on n'est pas admin, on bloque le choix d'un profil :
-  // impossible d'utiliser l'identité de quelqu'un d'autre sans s'être connecté.
+  // Tant que personne n'est identifié(e) — ni par e-mail (Base44/manuel), ni
+  // par confirmation manuelle de son nom — le choix d'un profil est bloqué.
+  // Plus d'exception pour les admins : même en mode administrateur, il faut
+  // confirmer son identité pour agir en tant que quelqu'un via ce menu (les
+  // actions admin dédiées sur chaque créneau restent, elles, toujours possibles).
   function updateRecruiterSelectLock(){
     const connected = !!base44LockedIdentity;
+    const pickBtn = document.getElementById('prems-pick-name-btn');
+    const hintEl = document.getElementById('prems-identity-required');
     if(connected){
-      // Connecté(e) via e-mail (Base44 ou manuel) : toujours verrouillé sur sa
-      // propre identité, admin ou pas — pas d'usurpation possible d'un autre recruteur.
       recruiterSelect.disabled = true;
-      const hintEl = document.getElementById('prems-identity-required');
       if(hintEl) hintEl.style.display = 'none';
+      if(pickBtn) pickBtn.style.display = 'none';
       const placeholder = recruiterSelect.querySelector('option[value=""]');
       if(placeholder) placeholder.remove();
       return;
     }
-    // Pas connecté(e) : seul un admin peut quand même choisir librement un
-    // profil (le temps que tout le monde ait son e-mail rattaché) ; sinon,
-    // impossible d'utiliser le profil de quelqu'un sans s'être connecté.
-    const locked = !isAdmin;
-    recruiterSelect.disabled = locked;
-    const hintEl = document.getElementById('prems-identity-required');
-    if(hintEl) hintEl.style.display = locked ? '' : 'none';
-    if(locked){
-      if(!recruiterSelect.querySelector('option[value=""]')){
-        recruiterSelect.insertAdjacentHTML('afterbegin', `<option value="">— Connecte-toi pour choisir —</option>`);
-      }
-      recruiterSelect.value = "";
-      syncAbsentToggle();
-    } else {
-      const placeholder = recruiterSelect.querySelector('option[value=""]');
-      if(placeholder) placeholder.remove();
+    recruiterSelect.disabled = true;
+    if(hintEl) hintEl.style.display = '';
+    if(pickBtn) pickBtn.style.display = '';
+    if(!recruiterSelect.querySelector('option[value=""]')){
+      recruiterSelect.insertAdjacentHTML('afterbegin', `<option value="">— Identifie-toi pour choisir —</option>`);
     }
+    recruiterSelect.value = "";
+    syncAbsentToggle();
   }
 
   function renderLegend(){
@@ -1665,7 +1682,7 @@
       const c = colorFor(r.grade);
       const absentBit = absences[r.name] ? `<span class="prems-absent-pill">absent</span>` : '';
       const adminBtns = isAdmin
-        ? `<span class="abs-toggle" data-abs-toggle="${r.name}" title="${absences[r.name] ? 'Retirer absence' : 'Marquer absent(e)'}">${absences[r.name] ? '✓' : '🚫'}</span><span class="edit" data-edit="${r.name}" title="Modifier ce recruteur">✎</span><span class="remove" data-remove="${r.name}" title="Retirer ce recruteur">✕</span>`
+        ? `<span class="abs-toggle" data-abs-toggle="${r.name}" title="${absences[r.name] ? 'Retirer absence' : 'Marquer absent(e)'}">${absences[r.name] ? '✓' : '🚫'}</span><span class="edit" data-edit="${r.name}" title="Modifier ce recruteur">✎</span><span class="remove" data-force-logout="${r.name}" title="Déconnecter cette personne à distance (si elle est connectée via e-mail sur son appareil)">🔌</span><span class="remove" data-remove="${r.name}" title="Retirer ce recruteur">✕</span>`
         : '';
       const isMe = r.name === me;
       return `<span class="chip${isMe ? ' is-me' : ''}"${isMe ? ' title="C\'est toi"' : ''}><span class="swatch" style="background:${c}"></span>${r.name} — ${GRADE_LABEL[r.grade]||r.grade}${isMe ? ' 👤' : ''}${absentBit}${adminBtns}</span>`;
@@ -1687,6 +1704,22 @@
         syncAbsentToggle();
         saveAbsences();
         logAdminAction("a modifié le statut d'absence de quelqu'un", `${name} → ${absences[name] ? 'absent' : 'présent'}`);
+      });
+    });
+    legendEl.querySelectorAll('[data-force-logout]').forEach(el=>{
+      el.addEventListener('click', async ()=>{
+        if(!isAdmin) return;
+        const name = el.dataset.forceLogout;
+        if(!window.confirm(`Déconnecter ${name} à distance ? Si ${name} est connecté(e) via e-mail sur son appareil, il/elle sera déconnecté(e) et devra se reconnecter.`)) return;
+        try{
+          logoutRequests[name] = new Date().toISOString();
+          await fbSet('logout-requests', logoutRequests);
+          logAdminAction("a déconnecté quelqu'un à distance", name);
+          setStatus(`${name} sera déconnecté(e) de son appareil au prochain rafraîchissement.`, "ok");
+        }catch(e){
+          console.error(e);
+          setStatus("Échec de la demande de déconnexion.", "err");
+        }
       });
     });
   }
@@ -1880,6 +1913,9 @@
         emailMapping = { ...DEFAULT_EMAIL_MAPPING, ...fbMapping };
       }catch(e){ console.error(e); emailMapping = { ...DEFAULT_EMAIL_MAPPING }; }
       try{ rsvpConfirmations = (await fbGet(`rsvp-${weekKey}`)) || {}; }catch(e){ console.error(e); rsvpConfirmations = {}; }
+      try{ logoutRequests = (await fbGet('logout-requests')) || {}; }catch(e){ console.error(e); logoutRequests = {}; }
+      try{ presenceConfirmations = (await fbGet(`presence-${weekKey}`)) || {}; }catch(e){ console.error(e); presenceConfirmations = {}; }
+      checkForcedLogout();
 
       try{
         const bd = await fbGet('blink_disabled');
@@ -1985,6 +2021,10 @@
   }
   async function saveRsvpConfirmations(){
     try{ await fbSet(`rsvp-${weekKey}`, rsvpConfirmations); }
+    catch(err){ console.error(err); }
+  }
+  async function savePresenceConfirmations(){
+    try{ await fbSet(`presence-${weekKey}`, presenceConfirmations); }
     catch(err){ console.error(err); }
   }
   async function loadQuotaRequests(){
@@ -2167,6 +2207,21 @@
         }).join('<br>')
       : "Personne pour l'instant sur ce créneau.";
 
+    // Qui a marqué CE créneau comme indisponibilité récurrente — visible par
+    // tout le monde (pas juste la personne concernée), pour que les autres
+    // comprennent pourquoi ce créneau reste souvent vide plutôt que de se
+    // demander pourquoi personne ne le prend jamais.
+    const recurringUnavailableHere = recruiters
+      .map(r=>r.name)
+      .filter(name => list.every(a=>a.titulaire!==name)) // inutile de le signaler si la personne l'a quand même pris exceptionnellement
+      .filter(name =>
+        (recurringUnavailable[name]||[]).some(u=>u.day===day && u.slot===slotIdx) &&
+        !((unavailExceptions[name]||[]).some(u=>u.day===day && u.slot===slotIdx))
+      );
+    const recurringUnavailableInfo = recurringUnavailableHere.length
+      ? `<p class="prems-hint">ℹ️ Indisponible de façon récurrente ici : ${recurringUnavailableHere.join(', ')} (${day} ${slotLabel}).</p>`
+      : '';
+
     let actionsHtml = "";
 
     const slotTaken = list.length > 0;
@@ -2320,6 +2375,7 @@
           <h3>${day} — ${slotLabel}</h3>
           <p class="sub">Toi : ${me}</p>
           <p class="occ-list">${occLines}</p>
+          ${recurringUnavailableInfo}
           <div class="actions">${actionsHtml}</div>
         </div>
       </div>`;
@@ -3260,6 +3316,11 @@
   function computeMissingRecruiters(){
     return recruiters.filter(r=>{
       if(absences[r.name]) return false;
+      // Grades de supervision (Médecin-Chef et au-dessus, cf. "🎓 Gérer les
+      // grades") : ils encadrent les Responsables/Médecins Formateurs, ne
+      // sont pas censés prendre des créneaux régulièrement — seulement de
+      // façon ponctuelle. Ne pas les compter comme "n'a rien pris".
+      if(GRADES[r.grade] && GRADES[r.grade].supervisor) return false;
       const hasSlot = Object.keys(planning).some(k => (planning[k]||[]).some(a=>a.titulaire===r.name || a.suppleant===r.name));
       return !hasSlot;
     });
@@ -3630,6 +3691,7 @@
           <td><input class="prems-input" data-grade-label="${code}" value="${g.label}" style="width:100%;"></td>
           <td><input type="color" data-grade-color="${code}" value="${/^#/.test(g.color) ? g.color : '#e2574c'}"></td>
           <td style="text-align:center;"><input type="checkbox" data-grade-auto-admin="${code}" ${g.autoAdmin ? 'checked' : ''} title="Ce grade obtient automatiquement le mode administrateur via Base44, sans mot de passe"></td>
+          <td style="text-align:center;"><input type="checkbox" data-grade-supervisor="${code}" ${g.supervisor ? 'checked' : ''} title="Grade de supervision (encadre les autres) : pas censé prendre des créneaux régulièrement, donc jamais compté dans « Qui n'a rien pris ? »"></td>
           <td>${usedCount ? `${usedCount} recruteur(s)` : '—'}</td>
           <td><button class="prems-btn ghost small" data-action="remove-grade" data-code="${code}" ${usedCount ? 'disabled title="Grade encore utilisé — réaffecte ces recruteurs avant de le retirer"' : ''}>✕</button></td>
         </tr>`;
@@ -3637,13 +3699,13 @@
 
     modalLayer.innerHTML = `
       <div class="prems-modal-backdrop" id="prems-modal-backdrop">
-        <div class="prems-modal" style="max-width:640px;">
+        <div class="prems-modal" style="max-width:680px;">
           <h3>🎓 Gérer les grades</h3>
-          <p class="sub">S'applique à toute l'équipe dès l'enregistrement. Un grade encore utilisé par un recruteur ne peut pas être retiré (réaffecte-le·s d'abord via "✎" sur son chip). La colonne "Admin auto" sert à l'intégration Base44 (cf. "📧 Table des e-mails").</p>
+          <p class="sub">S'applique à toute l'équipe dès l'enregistrement. Un grade encore utilisé par un recruteur ne peut pas être retiré (réaffecte-le·s d'abord via "✎" sur son chip). "Admin auto" sert à l'intégration Base44. "Supervision" exclut ce grade de "Qui n'a rien pris ?" (encadrement, pas de quota de créneaux attendu).</p>
           <div style="max-height:280px; overflow:auto;">
             <table class="prems-recap-table">
-              <thead><tr><th>Code</th><th>Libellé</th><th>Couleur</th><th>Admin auto</th><th>Utilisé par</th><th></th></tr></thead>
-              <tbody>${rows || '<tr><td colspan="6">Aucun grade configuré.</td></tr>'}</tbody>
+              <thead><tr><th>Code</th><th>Libellé</th><th>Couleur</th><th>Admin auto</th><th>Supervision</th><th>Utilisé par</th><th></th></tr></thead>
+              <tbody>${rows || '<tr><td colspan="7">Aucun grade configuré.</td></tr>'}</tbody>
             </table>
           </div>
           <div class="row" style="display:flex; gap:6px; margin-top:12px; flex-wrap:wrap; align-items:center;">
@@ -3681,7 +3743,7 @@
       if(!/^[A-Z0-9]{1,6}$/.test(code)){ hint.textContent = "Code invalide (1 à 6 lettres/chiffres, ex : PSY)."; return; }
       if(draftGrades[code]){ hint.textContent = "Ce code existe déjà."; return; }
       if(!label){ hint.textContent = "Entre un libellé."; return; }
-      draftGrades[code] = { label, color: colorInput.value, autoAdmin: false };
+      draftGrades[code] = { label, color: colorInput.value, autoAdmin: false, supervisor: false };
       openGradesModal(draftGrades);
     });
 
@@ -3691,9 +3753,11 @@
         const labelEl = modalLayer.querySelector(`[data-grade-label="${code}"]`);
         const colorEl = modalLayer.querySelector(`[data-grade-color="${code}"]`);
         const autoAdminEl = modalLayer.querySelector(`[data-grade-auto-admin="${code}"]`);
+        const supervisorEl = modalLayer.querySelector(`[data-grade-supervisor="${code}"]`);
         if(labelEl && labelEl.value.trim()) draftGrades[code].label = labelEl.value.trim();
         if(colorEl && colorEl.value) draftGrades[code].color = colorEl.value;
         draftGrades[code].autoAdmin = !!(autoAdminEl && autoAdminEl.checked);
+        draftGrades[code].supervisor = !!(supervisorEl && supervisorEl.checked);
       });
       if(!Object.keys(draftGrades).length){ setStatus("Il faut garder au moins un grade.", "err"); return; }
       try{
@@ -3845,6 +3909,8 @@
     renderLegend();
     checkUnavailRenewalBanner();
     checkRsvpPrompts();
+    checkSwapPrompts();
+    checkPresencePrompt();
   });
 
   // --- Bandeau hebdomadaire de reconduction des indisponibilités récurrentes ---
@@ -3894,6 +3960,24 @@
     if(tomorrowSlots.length) openRsvpModal(tomorrowSlots, me);
   }
 
+  // --- Demandes d'échange reçues : affichage automatique au lancement -------
+  // Dès qu'un créneau connecté a une demande d'échange reçue en attente, on
+  // ouvre directement la fenêtre des échanges (au lieu de se contenter du
+  // badge) pour que la personne concernée la voie sans avoir à cliquer.
+  // Une demande déjà montrée dans cette session n'est pas re-proposée en
+  // boucle (elle reste bien sûr accessible via le bouton d'échanges).
+  async function checkSwapPrompts(){
+    const me = recruiterSelect.value;
+    if(!me) return;
+    let all = [];
+    try{ all = await loadSwapRequests(); }catch(e){ return; }
+    const receivedPending = all.filter(r=>r.toName===me && r.status==='pending' && !swapPromptShownThisSession.has(r.id));
+    if(!receivedPending.length) return;
+    if(modalLayer.innerHTML.trim() !== ""){ return; } // une autre fenêtre (ex : rappel RSVP) est déjà ouverte, on ne l'écrase pas
+    receivedPending.forEach(r=>swapPromptShownThisSession.add(r.id));
+    await openSwapListModal();
+  }
+
   function openRsvpModal(slots, me){
     const rows = slots.map(s=>`
       <div class="prems-swap-item" data-rsvp-row="${s.rsvpKey}">
@@ -3933,6 +4017,80 @@
         closeModal();
       });
     });
+  }
+
+  // --- Présence en temps réel : "Es-tu présent(e) ?" pendant le créneau -----
+  // Différent du RSVP (veille au soir) : celui-ci se déclenche PENDANT que le
+  // créneau est en cours. Si "Non", le/la suppléant(e) est promu(e) (ou le
+  // créneau est marqué urgent s'il n'y en a pas) — même logique que
+  // l'annulation de dernière minute.
+  function checkPresencePrompt(){
+    const me = recruiterSelect.value;
+    if(!me) return;
+    const today = DAYS[rawTodayIdx];
+    const now = new Date();
+    for(const s of SLOTS){
+      const key = `${today}-${s.idx}`;
+      const list = planning[key] || [];
+      if(!list.some(a=>a.titulaire===me)) continue;
+      const dt = getSlotDateTime(rawTodayIdx, s.idx);
+      if(!dt) continue;
+      const endDt = new Date(dt.getTime() + 2*3600*1000);
+      if(now < dt || now >= endDt) continue; // le créneau n'est pas EN COURS
+      const pKey = `${key}|${me}`;
+      if(presenceConfirmations[pKey] || presenceDismissedThisSession.has(pKey)) continue;
+      openPresenceModal(today, s.idx, key, s.label, me, pKey);
+      break; // un seul à la fois
+    }
+  }
+
+  function openPresenceModal(day, slotIdx, key, label, me, pKey){
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:380px;">
+          <h3>📍 Présent(e) ?</h3>
+          <p class="sub">Ton créneau <strong>${day} ${label}</strong> est en cours. Es-tu bien là ?</p>
+          <div class="actions">
+            <button class="prems-btn" data-presence="yes">✅ Oui</button>
+            <button class="prems-btn ghost" data-presence="no">🚨 Non</button>
+          </div>
+        </div>
+      </div>`;
+    const dismiss = ()=> presenceDismissedThisSession.add(pKey);
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop'){ dismiss(); closeModal(); } });
+    modalLayer.querySelector('[data-presence="yes"]').addEventListener('click', async ()=>{
+      presenceConfirmations[pKey] = 'yes';
+      await savePresenceConfirmations();
+      logAction(me, "a confirmé sa présence sur son créneau en cours", `${day} ${label}`);
+      closeModal();
+    });
+    modalLayer.querySelector('[data-presence="no"]').addEventListener('click', async ()=>{
+      presenceConfirmations[pKey] = 'no';
+      await savePresenceConfirmations();
+      await emergencyCancelSlot(day, slotIdx, key, me);
+      closeModal();
+    });
+  }
+
+  // --- Déconnexion à distance demandée par un admin --------------------------
+  // Vérifie si l'identité actuellement verrouillée sur CET appareil a fait
+  // l'objet d'une demande de déconnexion par un admin plus récente que la
+  // connexion en cours — si oui, déconnecte localement.
+  function checkForcedLogout(){
+    if(!base44LockedIdentity) return;
+    const req = logoutRequests[base44LockedIdentity];
+    if(!req) return;
+    let connectedSince = 0;
+    try{ connectedSince = Number(localStorage.getItem(`prems-connected-since-${base44LockedIdentity}`) || 0); }catch(e){}
+    if(new Date(req).getTime() > connectedSince){
+      const name = base44LockedIdentity;
+      try{ localStorage.removeItem('prems-manual-test-email'); }catch(e){}
+      try{ localStorage.removeItem('prems-manual-picked-name'); }catch(e){}
+      base44LockedIdentity = null;
+      updateRecruiterSelectLock();
+      showManualEmailLoggedOutUI();
+      setStatus(`Un administrateur t'a déconnecté(e) (${name}) — reconnecte-toi si besoin.`, "err");
+    }
   }
 
 
@@ -4149,6 +4307,60 @@
   //     possible qu'aucun des trois ne matche exactement — à ajuster une
   //     fois que c'est confirmé.
   // ============================================================
+  // --- Confirmation manuelle du nom, sans e-mail (fonctionne aussi en admin) --
+  // Pour ceux qui n'ont pas encore d'e-mail configuré dans "📧 Table des
+  // e-mails" : une petite fenêtre pour choisir son nom une fois, qui se
+  // verrouille ensuite comme une vraie connexion (même mécanisme que
+  // l'e-mail : un admin peut déconnecter à distance via "🔌" dans la légende).
+  const pickNameBtn = document.getElementById('prems-pick-name-btn');
+  if(pickNameBtn) pickNameBtn.addEventListener('click', ()=> openPickNameModal());
+
+  function openPickNameModal(){
+    const rows = recruiters.map(r=>`<button class="prems-btn ghost" data-pick-name="${r.name}" style="display:block; width:100%; margin-bottom:6px; text-align:left;">${r.name} — ${GRADE_LABEL[r.grade]||r.grade}</button>`).join('');
+    modalLayer.innerHTML = `
+      <div class="prems-modal-backdrop" id="prems-modal-backdrop">
+        <div class="prems-modal" style="max-width:380px;">
+          <h3>👤 Qui es-tu ?</h3>
+          <p class="sub">Choisis ton nom — ça se verrouille ensuite sur cet appareil, comme une vraie connexion (seul un admin pourra te déconnecter à distance si besoin).</p>
+          <div style="max-height:320px; overflow:auto;">${rows || '<p class="prems-hint">Aucun recruteur ajouté pour l’instant.</p>'}</div>
+          <div class="actions" style="margin-top:10px;"><button class="prems-btn ghost" data-action="close">Annuler</button></div>
+        </div>
+      </div>`;
+    document.getElementById('prems-modal-backdrop').addEventListener('click', (e)=>{ if(e.target.id==='prems-modal-backdrop') closeModal(); });
+    modalLayer.querySelector('[data-action="close"]').addEventListener('click', closeModal);
+    modalLayer.querySelectorAll('[data-pick-name]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ lockIdentityToName(btn.dataset.pickName); closeModal(); });
+    });
+  }
+
+  function lockIdentityToName(name){
+    if(!recruiters.some(r=>r.name===name)) return;
+    recruiterSelect.value = name;
+    base44LockedIdentity = name;
+    base44IsAutoConnection = false;
+    try{ localStorage.setItem('prems-manual-picked-name', name); }catch(e){}
+    try{ localStorage.setItem(`prems-connected-since-${name}`, String(Date.now())); }catch(e){}
+    updateRecruiterSelectLock();
+    const lockEl = document.getElementById('prems-identity-lock');
+    if(lockEl){
+      lockEl.textContent = '🔒 Identité confirmée';
+      lockEl.title = "Tu as confirmé ton identité sur cet appareil — un admin peut te déconnecter à distance si besoin.";
+      lockEl.style.display = '';
+    }
+    updateManualEmailLogoutVisibility();
+    syncAbsentToggle();
+    renderLegend();
+    computeRecommendationsFor(name);
+    updateSwapBadge();
+    updateOpenMarketBadge();
+    checkUnavailRenewalBanner();
+    checkRsvpPrompts();
+    checkSwapPrompts();
+    checkPresencePrompt();
+    logAction(name, "a confirmé son identité sur cet appareil (sans e-mail)");
+    setStatus(`Identité confirmée : ${name}.`, "ok");
+  }
+
   // --- Connexion manuelle par e-mail (en attendant l'intégration Base44) ----
   // Permet de tester (ou d'utiliser dès maintenant) tout le mécanisme
   // e-mail → identité → admin auto, sans dépendre de Base44 pour transmettre
@@ -4194,6 +4406,7 @@
     if(!isAdmin) return; // sécurité supplémentaire : le bouton n'est de toute façon visible que pour un admin
     const previousName = base44LockedIdentity;
     try{ localStorage.removeItem('prems-manual-test-email'); }catch(e){}
+    try{ localStorage.removeItem('prems-manual-picked-name'); }catch(e){}
     base44LockedIdentity = null;
     base44IsAutoConnection = false;
     const lockEl = document.getElementById('prems-identity-lock');
@@ -4256,6 +4469,7 @@
     }
     recruiterSelect.value = name;
     base44LockedIdentity = name;
+    try{ localStorage.setItem(`prems-connected-since-${name}`, String(Date.now())); }catch(e){}
     updateRecruiterSelectLock(); // pas d'usurpation possible d'un autre recruteur : le select reste verrouillé sur son identité
     const lockEl = document.getElementById('prems-identity-lock');
     if(lockEl) lockEl.style.display = '';
@@ -4266,6 +4480,8 @@
     updateSwapBadge();
     checkUnavailRenewalBanner();
     checkRsvpPrompts();
+    checkSwapPrompts();
+    checkPresencePrompt();
     const r = recruiters.find(r=>r.name===name);
     const grade = r ? r.grade : null;
     if(grade && GRADES[grade] && GRADES[grade].autoAdmin){
@@ -4398,15 +4614,26 @@
       applyBase44Identity(autoEmail, true);
     } else {
       const manualEmail = detectManualTestEmail();
-      if(manualEmail) applyBase44Identity(manualEmail, false);
-      else checkRsvpPrompts();
+      if(manualEmail){
+        applyBase44Identity(manualEmail, false);
+      } else {
+        let pickedName = null;
+        try{ pickedName = localStorage.getItem('prems-manual-picked-name'); }catch(e){}
+        if(pickedName && recruiters.some(r=>r.name===pickedName)){
+          lockIdentityToName(pickedName);
+        } else {
+          updateRecruiterSelectLock();
+        }
+        checkRsvpPrompts(); checkSwapPrompts(); checkPresencePrompt();
+      }
     }
   }));
-  setInterval(()=>{ renderTable(); updateLiveIndicator(); }, 60000);
+  setInterval(()=>{ recomputeDateContext(); renderTable(); updateLiveIndicator(); }, 60000);
   // Recharge les données partagées toutes les 15s pour voir les changements des collègues
   setInterval(()=>{ loadAll(true); }, 15000);
   // Vérifie toutes les 20s si le créneau de l'utilisateur approche (rappel personnel)
   setInterval(checkMyUpcomingSlotReminder, 20000);
+  setInterval(checkPresencePrompt, 20000);
   // Vérifie toutes les 15s si de nouvelles demandes d'échange sont arrivées (badge sur le bouton)
   setInterval(updateSwapBadge, 15000);
   setInterval(updateOpenMarketBadge, 15000);
@@ -4414,3 +4641,20 @@
   setInterval(checkRsvpPrompts, 30*60000);
 })();
 </script>
+
+<!--
+  ============================================================
+  RÈGLES FIREBASE À COLLER (Realtime Database > Rules > coller > Publier)
+  ============================================================
+  Corrige l'alerte Firebase "N'importe quel utilisateur peut lire/écrire".
+  Nécessite que "Authentification anonyme" soit activée dans la console
+  Firebase (Authentication > Sign-in method > Anonyme), sinon l'appli ne
+  pourra plus rien lire ni écrire une fois ces règles publiées.
+
+  {
+    "rules": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+-->
